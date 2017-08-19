@@ -80,7 +80,7 @@
 
 #include <math.h>
 
-//#define cred
+#define cred
 
 #define APPLICATION_VERSION "1.1.1"
 #define APP_NAME            "HTTP Client"
@@ -254,9 +254,9 @@ extern uVectorEntry __vector_table;
 #endif
 
 #define MAX_STRING_LENGTH    80
-char cPassword[MAX_STRING_LENGTH+1];
-char cSSID_NAME[MAX_STRING_LENGTH+1];
-char cCharacter;
+signed char cPassword[MAX_STRING_LENGTH+1];
+signed char cSSID_NAME[MAX_STRING_LENGTH+1];
+signed char cCharacter;
 int iStringLength = 0;
 //unsigned int GETChar(unsigned char *ucBuffer);
 //*****************************************************************************
@@ -2102,6 +2102,9 @@ int main()
 
     //#################GET PASSWORD FROM CONSOLE############################
 #ifdef cred
+
+    iStringLength = 0;
+
     UART_PRINT("Enter password:\n\r");
     cCharacter = UartGetChar(); // Get the first character
     while(cCharacter != '\r' && cCharacter != '\n' && (iStringLength <= MAX_STRING_LENGTH -1)){
@@ -2114,12 +2117,16 @@ int main()
     			cPassword[iStringLength] = cCharacter; //password
     			iStringLength++;
     		}
+
+    		iStringLength++;
     		cPassword[iStringLength] = '\0';
+
     		iStringLength = 0;
     		//
     		// Echoes the input string
     		//
     		Report("\n\r Password: %s", cPassword);
+    		UART_PRINT("\n\r");
     	}
     	else
     	{
@@ -2132,6 +2139,8 @@ int main()
 
 
     //#####################GET SSID FROM CONSOLE############################
+
+    iStringLength = 0;
     UART_PRINT("Enter SSID name:\n\r");
     cCharacter = UartGetChar();
     while(cCharacter != '\r' && cCharacter != '\n' && (iStringLength <= MAX_STRING_LENGTH -1)){
@@ -2145,12 +2154,15 @@ int main()
     			cSSID_NAME[iStringLength] = cCharacter; //password
     			iStringLength++;
     		}
+
+    		iStringLength++;
     		cSSID_NAME[iStringLength] = '\0';
     		iStringLength = 0;
     		//
     		// Echoes the input string
     		//
     		Report("\n\r SSID: %s", cSSID_NAME);
+    		UART_PRINT("\n\r");
     	}
     	else
     	{
