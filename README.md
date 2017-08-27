@@ -3,5 +3,5 @@ Change location (strPtr = " & loc=Los Angeles \0"; // Your location.) to your ge
 Connect CC3200 to a serial terminal on your PC.<br>
 Reset the board.<br>
 On board reset up:<br>
-On prompt "Enter Password" enter WiFi password<br><br>
+On prompt "Enter Password" enter WiFi password<br>
 On prompt "SSID name" enter WiFi name.<br>
