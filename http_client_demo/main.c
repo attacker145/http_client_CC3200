@@ -696,7 +696,7 @@ static long WlanConnect()
 
 #ifdef cred
     secParams.Key = (signed char *)cPassword;
-    secParams.KeyLen = strlen(cPassword);
+    secParams.KeyLen = strlen((const char *)cPassword);
     secParams.Type = SECURITY_TYPE;
 #else
     secParams.Key = (signed char *)SECURITY_KEY;
@@ -2099,7 +2099,27 @@ int main()
     	//GETChar(&passwrd[0]);
     //}
 
+   // unsigned char ucPinValue;
 
+   //Read GPIO: pin58
+   //GPIO_IF_GetPortNPin(SH_GPIO_3,&uiGPIOPort,&pucGPIOPin);
+   //ucPinValue = GPIO_IF_Get(SH_GPIO_3,uiGPIOPort,pucGPIOPin);
+
+   //Read GPIO: SW2 GPIO15
+   //GPIO_IF_GetPortNPin(SH_GPIO_22,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+  // ucPinValue = GPIO_IF_Get(SH_GPIO_22,uiGPIOPort,pucGPIOPin);	// Read pin status of GPIO22
+
+   //If Connected to VCC, Mode is AP
+      // if(ucPinValue == 1)
+       //{
+           //AP Mode
+           //g_uiDeviceModeConfig = ROLE_AP;
+       //}
+       //else
+       //{
+           //STA Mode
+          // g_uiDeviceModeConfig = ROLE_STA;
+       //}
     //#################GET PASSWORD FROM CONSOLE############################
 #ifdef cred
 
