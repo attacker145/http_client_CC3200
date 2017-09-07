@@ -71,6 +71,8 @@
 //#include "tmp006drv.h"
 //#include "bma222drv.h"
 
+#include "gpio_if.h"
+
 // HTTP Client lib
 #include <http/client/httpcli.h>
 #include <http/client/common.h>
@@ -115,7 +117,8 @@
 
 #define READ_SIZE           1450
 #define MAX_BUFF_SIZE       1460
-
+#define SH_GPIO_3           3       /* P58 - Device Mode */
+#define SH_GPIO_22          22      /* P15 - Device Mode */
 
 //*****************************************************************************
 //
@@ -208,6 +211,16 @@ extern int I2C_IF_ReadFrom(unsigned char ucDevAddr,
             unsigned char ucWrLen,
             unsigned char *pucRdDataBuf,
             unsigned char ucRdLen);
+extern void GPIO_IF_GetPortNPin(unsigned char ucPin,
+        unsigned int *puiGPIOPort,
+            unsigned char *pucGPIOPin);
+extern void GPIO_IF_GetPortNPin(unsigned char ucPin,
+                unsigned int *puiGPIOPort,
+                    unsigned char *pucGPIOPin);
+extern unsigned char GPIO_IF_Get(unsigned char ucPin,
+             unsigned int uiGPIOPort,
+             unsigned char ucGPIOPin);
+extern void GPIO_IF_LedOff(char ledNum);
 
 //*****************************************************************************
 
@@ -243,6 +256,7 @@ unsigned char g_buff[MAX_BUFF_SIZE+1];
 long bytesReceived = 0; // variable to store the file size
 char buf[100];
 unsigned char g_ucUARTRecvBuffer1[80];
+unsigned char ucPinValue;//02/17/2017
 //char buf[57];
 
 
@@ -694,23 +708,31 @@ static long WlanConnect()
 
 
 
-#ifdef cred
-    secParams.Key = (signed char *)cPassword;
-    secParams.KeyLen = strlen((const char *)cPassword);
-    secParams.Type = SECURITY_TYPE;
-#else
-    secParams.Key = (signed char *)SECURITY_KEY;
-    secParams.KeyLen = strlen(SECURITY_KEY);
-    secParams.Type = SECURITY_TYPE;
-#endif
+//#ifdef cred
+    if(ucPinValue == 1){
+    	secParams.Key = (signed char *)cPassword;
+    	secParams.KeyLen = strlen((const char *)cPassword);
+    	secParams.Type = SECURITY_TYPE;
+    }
+//#else
+    else{
+    	secParams.Key = (signed char *)SECURITY_KEY;
+    	secParams.KeyLen = strlen(SECURITY_KEY);
+    	secParams.Type = SECURITY_TYPE;
+    }
+//#endif
 
-#ifdef cred
-    lRetVal = sl_WlanConnect((signed char *)cSSID_NAME, strlen((const char *)cSSID_NAME), 0, &secParams, 0);
-    ASSERT_ON_ERROR(lRetVal);
-#else
-    lRetVal = sl_WlanConnect((signed char *)SSID_NAME, strlen((const char *)SSID_NAME), 0, &secParams, 0);
-    ASSERT_ON_ERROR(lRetVal);
-#endif
+//#ifdef cred
+    if(ucPinValue == 1){
+    	lRetVal = sl_WlanConnect((signed char *)cSSID_NAME, strlen((const char *)cSSID_NAME), 0, &secParams, 0);
+    	ASSERT_ON_ERROR(lRetVal);
+    }
+//#else
+    else{
+    	lRetVal = sl_WlanConnect((signed char *)SSID_NAME, strlen((const char *)SSID_NAME), 0, &secParams, 0);
+    	ASSERT_ON_ERROR(lRetVal);
+    }
+//#endif
 
     // Wait for WLAN Event
     while((!IS_CONNECTED(g_ulStatus)) || (!IS_IP_ACQUIRED(g_ulStatus)))
@@ -1156,7 +1178,7 @@ static int HTTPPostMethod_data(HTTPCli_Handle httpClient)
                                 };
 
     /* Set request header fields to be send for HTTP request. */
-    HTTPCli_setRequestFields(httpClient, fields);
+    HTTPCli_setRequestFields(httpClient, fields);//Prints response from the webpage
 
     /* Send POST method request. */
     /* Here we are setting moreFlags = 1 as there are some more header fields need to send
@@ -1172,7 +1194,7 @@ static int HTTPPostMethod_data(HTTPCli_Handle httpClient)
     }
 
     //acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85
-    sprintf((char *)tmpBuf, "%d", (sizeof(buf)-1));  // Size of POST data body 99
+    sprintf((char *)tmpBuf, "%d", (sizeof(buf)-1));  // Print Size of POST data body 99
     //sprintf((char *)tmpBuf, "%d", (sizeof(POST_DATA)-1));  // Size of POST data body
 
     /*
@@ -2065,6 +2087,9 @@ TMP006DrvGetTemp(float *pfCurrTemp)
 int main()
 {
     long lRetVal = -1;
+    unsigned int uiGPIOPort;//02/17/2017
+    unsigned char pucGPIOPin;//02/17/2017
+    unsigned char delay_cntr;
 
     HTTPCli_Struct httpClient;
     //char c = 0;
@@ -2105,24 +2130,25 @@ int main()
    //GPIO_IF_GetPortNPin(SH_GPIO_3,&uiGPIOPort,&pucGPIOPin);
    //ucPinValue = GPIO_IF_Get(SH_GPIO_3,uiGPIOPort,pucGPIOPin);
 
-   //Read GPIO: SW2 GPIO15
-   //GPIO_IF_GetPortNPin(SH_GPIO_22,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
-  // ucPinValue = GPIO_IF_Get(SH_GPIO_22,uiGPIOPort,pucGPIOPin);	// Read pin status of GPIO22
+
+   //Read GPIO: SW2 GPIO22
+   GPIO_IF_GetPortNPin(SH_GPIO_22,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+   ucPinValue = GPIO_IF_Get(SH_GPIO_22,uiGPIOPort,pucGPIOPin);	// Read pin status of GPIO22
 
    //If Connected to VCC, Mode is AP
-      // if(ucPinValue == 1)
-       //{
-           //AP Mode
+      //if(ucPinValue == 1)
+      //{
+           //If button is pressed
            //g_uiDeviceModeConfig = ROLE_AP;
        //}
        //else
        //{
-           //STA Mode
+           //If button is NOT pressed
           // g_uiDeviceModeConfig = ROLE_STA;
        //}
     //#################GET PASSWORD FROM CONSOLE############################
 #ifdef cred
-
+    if(ucPinValue == 1){//If SW2 is pressed
     iStringLength = 0;
 
     UART_PRINT("Enter password:\n\r");
@@ -2191,6 +2217,10 @@ int main()
     		iStringLength++;
     	}
     	cCharacter = UartGetChar();
+    }
+    }
+    else{
+    	//No case
     }
 #endif
 
@@ -2321,13 +2351,10 @@ int main()
     const char *strPtr;
     while(1){
 
-    	MAP_UtilsDelay(40000000);
-
-    	//c = MAP_UARTCharGetNonBlocking(CONSOLE);        // Get a single character
-    	//if (c != 0){
-    	//	g_UartHaveCmd = GETChar(&g_ucUARTRecvBuffer1[0]);
-    	//}
-
+    	//#define SEC_TO_LOOP(x)        ((80000000/5)*x)
+    	for (delay_cntr = 0; delay_cntr < 4; delay_cntr++){
+    		MAP_UtilsDelay(40000000);//2.5 sec delay
+    	}
 
     	AccSample(); // Just do a single reading for now. TODO: Make Async.
     	SetAccAvg(); // g_accXAvg, g_accYAvg, g_accZAvg, g_accTotalAvg
@@ -2351,7 +2378,7 @@ int main()
     	if (cx>=0 && cx<99)	{// check returned value
     		//bufPtr = &buf[cx];//bufPtr now points to buf[cx]
     		//snprintf ( buf+cx, 99-cx, ", and the half of that is %d.", 60/2/2 );
-    		strPtr = " & loc=Los Angeles \0";
+    		strPtr = " & loc=Los Angeles \0";	// Your location.
     		//char * strcpy ( char * destination, const char * source );
     		//snprintf ends string with '\0' since the string needs to continue '\0' has to be replaced with a character
     		//that is why cx - 1
@@ -2361,7 +2388,10 @@ int main()
     	UART_PRINT(buf);
     	UART_PRINT("\n\r");
 
-    	MAP_UtilsDelay(40000000);
+    	for (delay_cntr = 0; delay_cntr < 4; delay_cntr++){
+    		MAP_UtilsDelay(40000000);//2.5 sec delay
+    	}
+
     	lRetVal = HTTPPostMethod_data(&httpClient);
     	UART_PRINT("\n\r");
     	if(lRetVal < 0)
