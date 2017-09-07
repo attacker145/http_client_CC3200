@@ -8,4 +8,4 @@ Reset the board.<br>
 Press and hold SW2 and reset the board<br>
 On prompt "Enter Password" enter WiFi password<br>
 On prompt "SSID name" enter WiFi name.<br>
-Or reset the board
+<b>Or just reset the board and the common.h credentials will be used.</b>
