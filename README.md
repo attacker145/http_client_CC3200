@@ -1,5 +1,5 @@
 # http_client_CC3200
-115200, 8N1, no handshake
+115200, 8N1, no handshake<br>
 Enter your WiFi PASSWORD and SSID name in common.h<br>
 Change location (strPtr = " & loc=Los Angeles \0"; // Your location.) to your geographical location in the source code main file, flush the project into your CC3200 board, and view the results on the www.cnktechlabs.com/data.html. <br>
 Connect CC3200 to a serial terminal on your PC.<br>
