@@ -116,7 +116,7 @@ PinMuxConfig(void)
 	    // Configure PIN_58 for GPIO Input
 	    //
 	    PinTypeGPIO(PIN_58, PIN_MODE_0, false);
-	    GPIODirModeSet(GPIOA0_BASE, 0x8, GPIO_DIR_MODE_IN);	//Light Sensor
+	    GPIODirModeSet(GPIOA0_BASE, 0x8, GPIO_DIR_MODE_OUT);	// LCD RW
 
 	    //
 	    // Configure PIN_60 for GPIO Output
