@@ -57,14 +57,22 @@
 #include "prcm.h"
 #include "utils.h"
 #include "interrupt.h"
+#include "adc.h"
+#include "pin.h"
 
 // common interface includes
 #include "uart_if.h"
+#include "uart.h"
 #include "common.h"
 #include "pinmux.h"
 #include "i2c_if.h"
-#include "tmp006drv.h"
-#include "bma222drv.h"
+#include "hw_memmap.h"
+#include "gpio.h"
+//#include "serial_wifi.h" //not good
+//#include "tmp006drv.h"
+//#include "bma222drv.h"
+
+#include "gpio_if.h"
 
 // HTTP Client lib
 #include <http/client/httpcli.h>
@@ -72,6 +80,10 @@
 
 // JSON Parser
 #include "jsmn.h"
+
+#include <math.h>
+
+#define cred
 
 #define APPLICATION_VERSION "1.1.1"
 #define APP_NAME            "HTTP Client"
@@ -82,7 +94,7 @@
 
 							//{ "key": "value",\n\ "key": "value" \n\  }
 //#define POST_DATA           "{\n\"name\":\"xyz\",\n\"address\":\n{\n\"plot#\":12,\n\"street\":\"abc\",\n\"city\":\"ijk\"\n},\n\"age\":30\n}"
-#define POST_DATA "?id=goodbye&mode=run"
+#define POST_DATA "say=Hi&to=Mom"
 
 
 #define DELETE_REQUEST_URI 	"/delete"
@@ -93,7 +105,7 @@
 
 #define GET_REQUEST_URI_JSON 	"/get"
 
-//#define GET_REQUEST_URI 	"/get.html"							//*****************************************************
+#define GET_REQUEST_URI_PAGE	"/data.html"							//*****************************************************
 #define GET_REQUEST_URI 	"/get.php?id=goodbye&mode=run"		//the text that follows the ? is the query string
 //#define GET_REQUEST_URI 	"/get.php"
 
@@ -106,7 +118,9 @@
 
 #define READ_SIZE           1450
 #define MAX_BUFF_SIZE       1460
-
+#define SH_GPIO_3           3       /* P58 - Light Sensor */
+#define SH_GPIO_9           9		// Red LED
+#define SH_GPIO_22          22      /* P15 - Device Mode */
 
 //*****************************************************************************
 //
@@ -115,6 +129,60 @@
 //*****************************************************************************
 #define I2C_MASTER_MODE_STD     0
 #define I2C_MASTER_MODE_FST     1
+
+//*****************************************************************************
+// BMA222 Device I2C address
+//*****************************************************************************
+#define BMA222_DEV_ADDR          0x18
+
+#define BMA222_CHID_ID_NUM       0x00
+
+//*****************************************************************************
+// BMA222 Acc Data Register related macros
+//*****************************************************************************
+#define BMA222_ACC_DATA_X_NEW   (0x2)
+#define BMA222_ACC_DATA_X   	(0x3)
+#define BMA222_ACC_DATA_Y_NEW  	(0x4)
+#define BMA222_ACC_DATA_Y   	(0x5)
+#define BMA222_ACC_DATA_Z_NEW  	(0x6)
+#define BMA222_ACC_DATA_Z   	(0x7)
+
+//*****************************************************************************
+// TMP006 Device I2C address
+//*****************************************************************************
+#define TMP006_DEV_ADDR         0x41
+
+//*****************************************************************************
+// TMP006 Register offset address
+//*****************************************************************************
+#define TMP006_VOBJECT_REG_ADDR         0x0
+#define TMP006_TAMBIENT_REG_ADDR        0x1
+#define TMP006_CONFIG_REG_ADDR          0x2
+#define TMP006_MANUFAC_ID_REG_ADDR      0xFE
+#define TMP006_DEVICE_ID_REG_ADDR       0xFF
+
+//*****************************************************************************
+// TMP006 Device details
+//*****************************************************************************
+#define TMP006_MANUFAC_ID       0x5449
+#define TMP006_DEVICE_ID        0x0067
+
+//*****************************************************************************
+//                      MACRO DEFINITIONS
+//*****************************************************************************
+#define FAILURE                 -1
+#define SUCCESS                 0
+#define RET_IF_ERR(Func)        {int iRetVal = (Func); \
+                                 if (SUCCESS != iRetVal) \
+                                     return  iRetVal;}
+
+//*****************************************************************************
+// BMA222 Data Interpretation macros
+//*****************************************************************************
+#define RESOLUTION_8BIT         ((float)(1.999 / 127))  //+-2g
+#define G_VAL                   ((float)9.7798)
+
+#define NO_OF_SAMPLES 		128 //ADC
 
 volatile static float g_accXIntervalSum = 0;
 volatile static float g_accYIntervalSum = 0;
@@ -125,7 +193,9 @@ volatile static float g_accTotalAvg;
 volatile static float g_accXAvg;
 volatile static float g_accYAvg;
 volatile static float g_accZAvg;
-static unsigned char g_ucDryerRunning = 0;
+
+unsigned long pulAdcSamples[4096];//ADC
+//static unsigned char g_ucDryerRunning = 0;
 
 
 //*****************************************************************************
@@ -147,6 +217,16 @@ extern int I2C_IF_ReadFrom(unsigned char ucDevAddr,
             unsigned char ucWrLen,
             unsigned char *pucRdDataBuf,
             unsigned char ucRdLen);
+extern void GPIO_IF_GetPortNPin(unsigned char ucPin,
+        unsigned int *puiGPIOPort,
+            unsigned char *pucGPIOPin);
+extern void GPIO_IF_GetPortNPin(unsigned char ucPin,
+                unsigned int *puiGPIOPort,
+                    unsigned char *pucGPIOPin);
+extern unsigned char GPIO_IF_Get(unsigned char ucPin,
+             unsigned int uiGPIOPort,
+             unsigned char ucGPIOPin);
+extern void GPIO_IF_LedOff(char ledNum);
 
 //*****************************************************************************
 
@@ -180,6 +260,14 @@ unsigned char  g_ucConnectionSSID[SSID_LEN_MAX+1]; //Connection SSID
 unsigned char  g_ucConnectionBSSID[BSSID_LEN_MAX]; //Connection BSSID
 unsigned char g_buff[MAX_BUFF_SIZE+1];
 long bytesReceived = 0; // variable to store the file size
+char buf[100];
+unsigned char g_ucUARTRecvBuffer1[80];
+unsigned char ucPinValue;//02/17/2017
+unsigned char Lght = 0;
+unsigned int uiGPIOPort;//02/17/2017
+unsigned char pucGPIOPin;//02/17/2017
+//char buf[57];
+
 
 #if defined(ccs) || defined(gcc)
 extern void (* const g_pfnVectors[])(void);
@@ -187,6 +275,28 @@ extern void (* const g_pfnVectors[])(void);
 #if defined(ewarm)
 extern uVectorEntry __vector_table;
 #endif
+
+#define MAX_STRING_LENGTH    80
+signed char cPassword[MAX_STRING_LENGTH+1];
+signed char cSSID_NAME[MAX_STRING_LENGTH+1];
+signed char cCharacter;
+int iStringLength = 0;
+//unsigned int GETChar(unsigned char *ucBuffer);
+//*****************************************************************************
+//                          MACROS
+//*****************************************************************************
+//#define APPLICATION_VERSION  "1.1.1"
+//#define APP_NAME             "UART Echo"
+#define CONSOLE              UARTA0_BASE
+#define UartGetChar()        MAP_UARTCharGet(CONSOLE)
+#define UartPutChar(c)       MAP_UARTCharPut(CONSOLE,c)
+#define MAX_STRING_LENGTH    80
+volatile int g_iCounter = 0;
+
+
+
+
+
 //*****************************************************************************
 //                 GLOBAL VARIABLES -- End
 //*****************************************************************************
@@ -595,19 +705,43 @@ static long ConfigureSimpleLinkToDefaultState()
 //! \warning    If the WLAN connection fails or we don't aquire an IP
 //!            address, It will be stuck in this function forever.
 //
+//
+//	char cPassword[MAX_STRING_LENGTH+1];
+//	char cSSID_NAME[80];
+//
 //****************************************************************************
 static long WlanConnect()
 {
     SlSecParams_t secParams = {0};
     long lRetVal = 0;
 
-    secParams.Key = (signed char *)SECURITY_KEY;
-    secParams.KeyLen = strlen(SECURITY_KEY);
-    secParams.Type = SECURITY_TYPE;
 
-    lRetVal = sl_WlanConnect((signed char *)SSID_NAME,
-                           strlen((const char *)SSID_NAME), 0, &secParams, 0);
-    ASSERT_ON_ERROR(lRetVal);
+
+//#ifdef cred
+    if(ucPinValue == 1){
+    	secParams.Key = (signed char *)cPassword;
+    	secParams.KeyLen = strlen((const char *)cPassword);
+    	secParams.Type = SECURITY_TYPE;
+    }
+//#else
+    else{
+    	secParams.Key = (signed char *)SECURITY_KEY;
+    	secParams.KeyLen = strlen(SECURITY_KEY);
+    	secParams.Type = SECURITY_TYPE;
+    }
+//#endif
+
+//#ifdef cred
+    if(ucPinValue == 1){
+    	lRetVal = sl_WlanConnect((signed char *)cSSID_NAME, strlen((const char *)cSSID_NAME), 0, &secParams, 0);
+    	ASSERT_ON_ERROR(lRetVal);
+    }
+//#else
+    else{
+    	lRetVal = sl_WlanConnect((signed char *)SSID_NAME, strlen((const char *)SSID_NAME), 0, &secParams, 0);
+    	ASSERT_ON_ERROR(lRetVal);
+    }
+//#endif
 
     // Wait for WLAN Event
     while((!IS_CONNECTED(g_ulStatus)) || (!IS_IP_ACQUIRED(g_ulStatus)))
@@ -773,7 +907,7 @@ static int readResponse(HTTPCli_Handle httpClient)
 			                NULL
 	                     };
 
-	/* Read HTTP POST request status code */
+	/* Read HTTP POST request status code. Server status */
 	lRetVal = HTTPCli_getResponseStatus(httpClient);
 	if(lRetVal > 0)
 	{
@@ -877,9 +1011,42 @@ static int readResponse(HTTPCli_Handle httpClient)
 		            Please refer HTTP Client Libary API documenation @ref HTTPCli_readResponseBody
 		            for more information
 
+char *s;
+
+s = strstr(buff, "hassasin");      // search for string "hassasin" in buff
+if (s != NULL)                     // if successful then s now points at "hassasin"
+{
+     printf("Found string at index = %d\n", s - buff);
+}                                  // index of "hassasin" in buff can be found by pointer subtraction
+else
+{
+     printf("String not found\n");  // strstr returns NULL if search string not found
+}
+
 			 */
+
 			bytesRead = HTTPCli_readResponseBody(httpClient, (char *)dataBuffer, len, &moreFlags);
 			UART_PRINT("\n\n\r Received response body: \n\r %s", dataBuffer);//Print web-site response
+
+			//08/18/2017 --------------------------------------------------------------------------------------
+			char *s;
+			s = strstr(dataBuffer, "checked");//08/18/2017
+			if (s != NULL)                     // if successful then s now points at "checked"08/18/2017
+			{
+				UART_PRINT("\n\n\rFound string at index = %d\n", s - dataBuffer);//08/18/2017
+				GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+				GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn ON red LED 08/18/2017
+
+			}                                  // index of "checked" in buff can be found by pointer subtraction
+			else
+			{
+				UART_PRINT("\n\n\rNo data received from web page\n");  // strstr returns NULL if search string not found
+				GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+				GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
+
+			}
+			//--------------------------------------------------------------------------------------------------
+
 
 			if(bytesRead < 0)
 			{
@@ -961,13 +1128,21 @@ static int HTTPPostMethod(HTTPCli_Handle httpClient)
     bool lastFlag = 1;
     char tmpBuf[4];
     long lRetVal = 0;
+    //buf
+
+    //HTTPCli_Field fields[4] = {
+    //                            {HTTPCli_FIELD_NAME_HOST, HOST_NAME},
+    //                            {HTTPCli_FIELD_NAME_ACCEPT, "*/*"},
+    //                            {HTTPCli_FIELD_NAME_CONTENT_TYPE, "application/json"},
+    //                            {NULL, NULL}
+    //                        };
+
     HTTPCli_Field fields[4] = {
-                                {HTTPCli_FIELD_NAME_HOST, HOST_NAME},
-                                {HTTPCli_FIELD_NAME_ACCEPT, "*/*"},
-                                {HTTPCli_FIELD_NAME_CONTENT_TYPE, "application/json"},
-                                {NULL, NULL}
-                            };
-    
+                                    {HTTPCli_FIELD_NAME_HOST, HOST_NAME},
+                                    {HTTPCli_FIELD_NAME_ACCEPT, "*/*"},
+                                    {HTTPCli_FIELD_NAME_CONTENT_TYPE, "application/x-www-form-urlencoded"},
+                                    {NULL, NULL}
+                                };
 
     /* Set request header fields to be send for HTTP request. */
     HTTPCli_setRequestFields(httpClient, fields);
@@ -1013,7 +1188,85 @@ static int HTTPPostMethod(HTTPCli_Handle httpClient)
     return lRetVal;
 }
 
+//*****************************************************************************
+//
+//! \brief HTTP POST Demonstration
+//!
+//! \param[in]  httpClient - Pointer to http client
+//!
+//! \return 0 on success else error code on failure
+//!
+//*****************************************************************************
+static int HTTPPostMethod_data(HTTPCli_Handle httpClient)
+{
+    bool moreFlags = 1;
+    bool lastFlag = 1;
+    char tmpBuf[4];
+    long lRetVal = 0;
+    //buf
 
+    //HTTPCli_Field fields[4] = {
+    //                            {HTTPCli_FIELD_NAME_HOST, HOST_NAME},
+    //                            {HTTPCli_FIELD_NAME_ACCEPT, "*/*"},
+    //                            {HTTPCli_FIELD_NAME_CONTENT_TYPE, "application/json"},
+    //                            {NULL, NULL}
+    //                        };
+
+    HTTPCli_Field fields[4] = {
+                                    {HTTPCli_FIELD_NAME_HOST, HOST_NAME},
+                                    {HTTPCli_FIELD_NAME_ACCEPT, "*/*"},
+                                    {HTTPCli_FIELD_NAME_CONTENT_TYPE, "application/x-www-form-urlencoded"},
+                                    {NULL, NULL}
+                                };
+
+    /* Set request header fields to be send for HTTP request. */
+    HTTPCli_setRequestFields(httpClient, fields);//Prints response from the webpage
+
+    /* Send POST method request. */
+    /* Here we are setting moreFlags = 1 as there are some more header fields need to send
+       other than setted in previous call HTTPCli_setRequestFields() at later stage.
+       Please refer HTTP Library API documentaion @ref HTTPCli_sendRequest for more information.
+    */
+    moreFlags = 1;
+    lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_POST, POST_REQUEST_URI, moreFlags);//POST & post.php
+    if(lRetVal < 0)
+    {
+        UART_PRINT("Failed to send HTTP POST request header.\n\r");
+        return lRetVal;
+    }
+
+    //acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85
+    sprintf((char *)tmpBuf, "%d", (sizeof(buf)-1));  // Print Size of POST data body 99
+    //sprintf((char *)tmpBuf, "%d", (sizeof(POST_DATA)-1));  // Size of POST data body
+
+    /*
+     * Here we are setting lastFlag = 1 as it is last header field.
+     * Please refer HTTP Library API documentaion @ref HTTPCli_sendField for more information.
+     * Send the length of sent data
+    */
+    lastFlag = 1;
+    lRetVal = HTTPCli_sendField(httpClient, HTTPCli_FIELD_NAME_CONTENT_LENGTH, (const char *)tmpBuf, lastFlag);
+    if(lRetVal < 0)
+    {
+        UART_PRINT("Failed to send HTTP POST request header.\n\r");
+        return lRetVal;
+    }
+
+
+    /* Send POST data/body */
+    //lRetVal = HTTPCli_sendRequestBody(httpClient, POST_DATA, (sizeof(POST_DATA)-1));
+    lRetVal = HTTPCli_sendRequestBody(httpClient, buf, (sizeof(buf)-1)); // POST data body
+    if(lRetVal < 0)
+    {
+        UART_PRINT("Failed to send HTTP POST request body.\n\r");
+        return lRetVal;
+    }
+
+
+    lRetVal = readResponse(httpClient);
+
+    return lRetVal;
+}
 //*****************************************************************************
 //
 //! \brief HTTP DELETE Demonstration
@@ -1228,6 +1481,226 @@ static int HTTPGetMethod(HTTPCli_Handle httpClient)
     return lRetVal;
 }
 
+/*!
+    \brief This function read respose from server and dump on console
+
+    \param[in]      httpClient - HTTP Client object
+
+    \return         0 on success else -ve
+
+    \note
+
+    \warning
+*/
+static int readPageResponse(HTTPCli_Handle httpClient)
+{
+	long lRetVal = 0;
+	int bytesRead = 0;
+	int id = 0;
+	unsigned long len = 0;
+	int json = 0;
+	char *dataBuffer=NULL;
+	bool moreFlags = 1;
+	const char *ids[4] = {
+	                        HTTPCli_FIELD_NAME_CONTENT_LENGTH,
+			                HTTPCli_FIELD_NAME_CONNECTION,
+			                HTTPCli_FIELD_NAME_CONTENT_TYPE,
+			                NULL
+	                     };
+
+	/* Read HTTP POST request status code. Server status */
+	lRetVal = HTTPCli_getResponseStatus(httpClient);
+	if(lRetVal > 0)
+	{
+		switch(lRetVal)
+		{
+		case 200:
+		{
+			UART_PRINT("HTTP Status 200\n\r");
+
+			HTTPCli_setResponseFields(httpClient, (const char **)ids);
+
+			while((id = HTTPCli_getResponseField(httpClient, (char *)g_buff, sizeof(g_buff), &moreFlags))
+					!= HTTPCli_FIELD_ID_END)
+			{
+				//(char *)g_buff - value Field value string.
+
+				switch(id)
+				{
+				case 0: /* HTTPCli_FIELD_NAME_CONTENT_LENGTH */
+				{
+					len = strtoul((char *)g_buff, NULL, 0);
+					UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONTENT_LENGTH\n\r");
+					UART_PRINT("\n\rLength: %s", g_buff);
+				}
+				break;
+				case 1: /* HTTPCli_FIELD_NAME_CONNECTION */
+				{
+					UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONNECTION\n\r");
+					UART_PRINT("\n\n\rConnection name: %s", g_buff);
+				}
+				break;
+				case 2: /* HTTPCli_FIELD_NAME_CONTENT_TYPE */
+				{
+
+					UART_PRINT("\n\r HTTPCli_FIELD_NAME_CONTENT_TYPE\n\r");
+					UART_PRINT("\n\r Content type : %s", g_buff);
+					if(!strncmp((const char *)g_buff, "application/json",
+							sizeof("application/json")))
+					{
+						json = 1;
+						UART_PRINT("\n\r g_buff == application/json \n\r");
+					}
+					else
+					{
+						json = 0;
+					}
+				}
+				break;
+				default:
+				{
+					UART_PRINT("\n\r Wrong filter id \n\r");
+					lRetVal = -1;
+					goto end;
+				}
+				}
+			}
+			bytesRead = 0;
+			if(len > sizeof(g_buff))
+			{
+				dataBuffer = (char *) malloc(len);
+				if(dataBuffer)
+				{
+					UART_PRINT("\n\r Failed to allocate memory \n\r");
+					lRetVal = -1;
+					goto end;
+				}
+			}
+			else
+			{
+				dataBuffer = (char *)g_buff;
+			}
+
+			bytesRead = HTTPCli_readResponseBody(httpClient, (char *)dataBuffer, len, &moreFlags);
+			UART_PRINT("\n\n\r Received response body: \n\r %s", dataBuffer);//Print web-site response
+			//UART_PRINT("\n\n\rPartial page:\n");
+			//printf( "%.100s", &dataBuffer[ 7722 ] );
+
+			//08/18/2017 --------------------------------------------------------------------------------------
+			char *s;
+			s = strstr(dataBuffer, "checked");//08/18/2017
+			if (s != NULL)                     // if successful then s now points at "checked"08/18/2017
+			{
+				UART_PRINT("\n\n\rFound string at index = %d\n", s - dataBuffer);//08/18/2017
+				GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+				GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn ON red LED 08/18/2017
+
+			}                                  // index of "checked" in buff can be found by pointer subtraction
+			else
+			{
+				UART_PRINT("\n\n\rNo data received from web page\n");  // strstr returns NULL if search string not found
+				GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+				GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
+
+			}
+			//--------------------------------------------------------------------------------------------------
+
+
+			if(bytesRead < 0)
+			{
+				UART_PRINT("\n\r Failed to received response body\n\r");
+				lRetVal = bytesRead;
+				goto end;
+			}
+			else if( bytesRead < len || moreFlags)
+			{
+				UART_PRINT("\n\r Mismatch in content length and received data length\n\r");
+				goto end;
+			}
+			dataBuffer[bytesRead] = '\0';
+
+			if(json)
+			{
+				/* Parse JSON data */
+				lRetVal = ParseJSONData(dataBuffer);
+				if(lRetVal < 0)
+				{
+					goto end;
+				}
+			}
+			else
+			{
+				/* treating data as a plain text */
+			}
+
+		}
+		break;
+
+		case 404:
+			UART_PRINT("File not found. \r\n");
+			/* Handle response body as per requirement.
+                  Note:
+                    Developers are advised to take appopriate action for HTTP
+                    return status code else flush the response body.
+                    In this example we are flushing response body in default
+                    case for all other than 200 HTTP Status code.
+			 */
+		default:
+			/* Note:
+              Need to flush received buffer explicitly as library will not do
+              for next request.Apllication is responsible for reading all the
+              data.
+			 */
+			FlushHTTPResponse(httpClient);
+			break;
+		}
+	}
+	else
+	{
+		UART_PRINT("Failed to receive data from server.\r\n");
+		goto end;
+	}
+
+	lRetVal = 0;
+
+end:
+    if(len > sizeof(g_buff) && (dataBuffer != NULL))
+	{
+	    free(dataBuffer);
+    }
+    return lRetVal;
+}
+
+static int HTTPGetPageMethod(HTTPCli_Handle httpClient)
+{
+
+    long lRetVal = 0;
+
+    HTTPCli_Field fields[4] = {
+                                {HTTPCli_FIELD_NAME_HOST, HOST_NAME},
+                                {HTTPCli_FIELD_NAME_ACCEPT, "*/*"},	//Accept: image/gif, image/jpeg, text/*, */*
+                                {HTTPCli_FIELD_NAME_CONTENT_LENGTH, "0"},
+                                {NULL, NULL}
+                            };
+    bool        moreFlags;
+
+    /* Set request header fields to be send for HTTP request. GET_REQUEST_URI*/
+    HTTPCli_setRequestFields(httpClient, fields);
+
+    moreFlags = 0;
+
+    //lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_REQUEST_URI_PAGE, moreFlags);
+    lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_REQUEST_URI, moreFlags);
+    if(lRetVal < 0)
+    {
+        UART_PRINT("Failed to send HTTP GET request.\n\r");
+        return lRetVal;
+    }
+
+     lRetVal = readPageResponse(httpClient);	//Currently returns all the text from data.html with text formatting (prints data to a serial port)
+
+    return lRetVal;
+}
 
 //*****************************************************************************
 //
@@ -1394,11 +1867,233 @@ BoardInit(void)
     PRCMCC3200MCUInit();
 }
 
+//****************************************************************************
+//
+//! Returns the value in the specified register
+//!
+//! \param ucRegAddr is the offset register address
+//! \param pucRegValue is the pointer to the register value store
+//!
+//! This function
+//!    1. Returns the value in the specified register
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+int
+GetRegisterValue(unsigned char ucRegAddr, unsigned char *pucRegValue)
+{
+    //
+    // Invoke the readfrom  API to get the required byte
+    //
+    if(I2C_IF_ReadFrom(BMA222_DEV_ADDR, &ucRegAddr, 1,
+                   pucRegValue, 1) != 0)
+    {
+        DBG_PRINT("I2C readfrom failed\n\r");
+        return FAILURE;
+    }
+
+    return SUCCESS;
+}
+
+//****************************************************************************
+//
+//! Sets the value in the specified register
+//!
+//! \param ucRegAddr is the offset register address
+//! \param ucRegValue is the register value to be set
+//!
+//! This function
+//!    1. Returns the value in the specified register
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+int
+SetRegisterValue(unsigned char ucRegAddr, unsigned char ucRegValue)
+{
+    unsigned char ucData[2];
+    //
+    // Select the register to be written followed by the value.
+    //
+    ucData[0] = ucRegAddr;
+    ucData[1] = ucRegValue;
+    //
+    // Initiate the I2C write
+    //
+    if(I2C_IF_Write(BMA222_DEV_ADDR,ucData,2,1) == 0)	// DevAddr Received by I2C:
+    {
+        return SUCCESS;
+    }
+    else
+    {
+        DBG_PRINT("I2C write failed\n\r");
+    }
+
+    return FAILURE;
+}
+
+//****************************************************************************
+//
+//! Reads a block of continuous data
+//!
+//! \param ucRegAddr is the start offset register address
+//! \param pucBlkData is the pointer to the data value store
+//! \param ucBlkDataSz is the size of data to be read
+//!
+//! This function
+//!    1. Returns the data values in the specified store
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+int
+BlockRead(unsigned char ucRegAddr,
+          unsigned char *pucBlkData,
+          unsigned char ucBlkDataSz)
+{
+    //
+    // Invoke the readfrom I2C API to get the required bytes
+    //
+    if(I2C_IF_ReadFrom(BMA222_DEV_ADDR, &ucRegAddr, 1,
+                   pucBlkData, ucBlkDataSz) != 0)
+    {
+        DBG_PRINT("I2C readfrom failed\n");
+        return FAILURE;
+    }
+
+    return SUCCESS;
+}
+
+//****************************************************************************
+//
+//! Initialize the BMA222 accelerometer device with defaults
+//!
+//! \param None
+//!
+//! This function
+//!    1. Reads the CHIP ID.
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+int
+BMA222Open()
+{
+    unsigned char ucRegVal;
+    //
+    // Read the CHIP ID NUM
+    //
+    RET_IF_ERR(GetRegisterValue(BMA222_CHID_ID_NUM, &ucRegVal));
+    DBG_PRINT("CHIP ID: 0x%x\n\r", ucRegVal);
+
+    return SUCCESS;
+}
+
+//****************************************************************************
+//
+//! Place the BMA222 accelerometer device to standby
+//!
+//! \param None
+//!
+//! This function
+//!    1. Sets the device to standby mode.
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+int
+BMA222Close()
+{
+    return SUCCESS;
+}
+
+//****************************************************************************
+//
+//! Get the accelerometer data readings
+//!
+//! \param pfAccX pointer to the AccX store
+//! \param pfAccY pointer to the AccY store
+//! \param pfAccZ pointer to the AccZ store
+//!
+//! This function
+//!    1. Reads the data registers over I2C.
+//!    2. Applies the range conversion to the raw values
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+int
+BMA222Read(signed char *pcAccX, signed char *pcAccY, signed char *pcAccZ)
+{
+    char cAccX = 0;
+    char cAccY = 0;
+    char cAccZ = 0;
+    //
+    // Read the acclerometer output registers LSB and MSB
+    //
+    RET_IF_ERR(BlockRead(BMA222_ACC_DATA_X, (unsigned char *)&cAccX,
+                     sizeof(cAccX)));
+
+    RET_IF_ERR(BlockRead(BMA222_ACC_DATA_Y, (unsigned char *)&cAccY,
+             sizeof(cAccY)));
+
+    RET_IF_ERR(BlockRead(BMA222_ACC_DATA_Z, (unsigned char *)&cAccZ,
+             sizeof(cAccZ)));
+
+    *pcAccX = cAccX;
+    *pcAccY = cAccY;
+    *pcAccZ = cAccZ;
+
+    return SUCCESS;
+}
+
+//****************************************************************************
+//
+//! Get the raw accelerometer data register readings
+//!
+//! \param psAccX pointer to the raw AccX store
+//! \param psAccY pointer to the raw AccY store
+//! \param psAccZ pointer to the raw AccZ store
+//!
+//! This function
+//!    1. Reads the data registers over I2C.
+//!    2. Returns the accelerometer readings
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+int
+BMA222ReadNew(signed char *pcAccX, signed char *pcAccY, signed char *pcAccZ)
+{
+    char cAccX[6];
+
+    //
+    // Read the acclerometer output registers LSB and MSB
+    //
+    RET_IF_ERR(BlockRead(BMA222_ACC_DATA_X_NEW, (unsigned char *)cAccX,6));
+
+     //
+    // Check whether new Sensor Data is available
+    //
+    if((cAccX[0] & 0x1) && (cAccX[2] & 0x1) && (cAccX[4] & 0x1))
+    {
+        *pcAccX = cAccX[1];
+        *pcAccY = cAccX[3];
+        *pcAccZ = cAccX[5];
+        return SUCCESS;
+    }
+
+    //New Sensor Data Not Available
+    return FAILURE;
+
+}
+
 //*****************************************************************************
 //
-//! ReadAccSensor
+//! AccSample
 //!
-//!    @brief  Read Accelerometer Data from Sensor
+//!    @brief  Read Accelerometer Data from Sensor to Globals
 //!
 //!
 //!     @return none
@@ -1406,119 +2101,267 @@ BoardInit(void)
 //!
 //
 //*****************************************************************************
-void ReadAccSensor()
+void AccSample()
 {
-    //Define Accelerometer Threshold to Detect Movement
-    const short csAccThreshold    = 5;
-
-    signed char cAccXT1,cAccYT1,cAccZT1;
-    signed char cAccXT2,cAccYT2,cAccZT2;
-    signed short sDelAccX, sDelAccY, sDelAccZ;
+    signed char accX,accY,accZ;
     int iRet = -1;
-    int iCount = 0;
+    //unsigned long critKey;
 
-    iRet = BMA222ReadNew(&cAccXT1, &cAccYT1, &cAccZT1);	//Get the raw accelerometer data register readings
+    //critKey = osi_EnterCritical();
+
+    iRet = BMA222ReadNew(&accX, &accY, &accZ);
     if(iRet)
     {
         //In case of error/ No New Data return
         return;
     }
-    for(iCount=0;iCount<2;iCount++)
+
+
+    g_accXIntervalSum += accX;
+    g_accYIntervalSum += accY;
+    g_accZIntervalSum += accZ;
+
+    g_accSampleCount++;
+    //osi_ExitCritical(critKey);
+}
+
+//*****************************************************************************
+//
+//! ReadAccSensor
+//!
+//!    @brief  Calculate Averages of Accelerometer Globals
+//!
+//!
+//!     @return none
+//!
+//!
+//
+//*****************************************************************************
+void SetAccAvg()
+{
+	//unsigned long critKey;
+
+    //critKey = osi_EnterCritical();
+    g_accXAvg = g_accXIntervalSum / g_accSampleCount;
+    g_accYAvg = g_accYIntervalSum / g_accSampleCount;
+    g_accZAvg = g_accZIntervalSum / g_accSampleCount;
+    g_accTotalAvg = (g_accZIntervalSum + g_accYIntervalSum + g_accXIntervalSum ) /
+		(g_accSampleCount * 3);
+
+    g_accXIntervalSum = 0;
+    g_accYIntervalSum = 0;
+    g_accZIntervalSum = 0;
+    g_accSampleCount = 0;
+    //osi_ExitCritical(critKey);
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Temperature
+//###################################################################################
+
+//****************************************************************************
+//                      LOCAL FUNCTION DEFINITIONS
+//****************************************************************************
+static int GetRegisterValue_temp(unsigned char ucRegAddr,
+                            unsigned short *pusRegValue);
+static double ComputeTemperature(double dVobject, double dTAmbient);
+
+
+//****************************************************************************
+//
+//! Returns the value in the specified register
+//!
+//! \param ucRegAddr is the offset register address
+//! \param pusRegValue is the pointer to the register value store
+//!
+//! This function
+//!    1. Returns the value in the specified register
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+int
+GetRegisterValue_temp(unsigned char ucRegAddr, unsigned short *pusRegValue)
+{
+    unsigned char ucRegData[2];
+    //
+    // Invoke the readfrom I2C API to get the required byte
+    //
+    if(I2C_IF_ReadFrom(TMP006_DEV_ADDR, &ucRegAddr, 1,
+                   &ucRegData[0], 2) != 0)
     {
-        MAP_UtilsDelay((90*80*1000)); //30msec
-        iRet = BMA222ReadNew(&cAccXT2, &cAccYT2, &cAccZT2);
-        if(iRet)
-        {
-            //In case of error/ No New Data continue
-            iRet = 0;
-            continue;
-        }
-
-        else
-        {
-            sDelAccX = abs((signed short)cAccXT2 - (signed short)cAccXT1);
-            sDelAccY = abs((signed short)cAccYT2 - (signed short)cAccYT1);
-            sDelAccZ = abs((signed short)cAccZT2 - (signed short)cAccZT1);
-
-            //Compare with Pre defined Threshold
-            if(sDelAccX > csAccThreshold || sDelAccY > csAccThreshold ||
-               sDelAccZ > csAccThreshold)
-            {
-                //Device Movement Detected, Break and Return
-                g_ucDryerRunning = 1;
-                break;
-            }
-            else
-            {
-                //Device Movement Static
-                g_ucDryerRunning = 0;
-            }
-        }
+        DBG_PRINT("I2C readfrom failed\n\r");
+        return FAILURE;
     }
 
+    *pusRegValue = (unsigned short)(ucRegData[0] << 8) | ucRegData[1];
+
+    return SUCCESS;
 }
 
-void AccSample(){
-	signed char accX,accY,accZ;
-	int iRet = -1;
-//unsigned long critKey;
+//****************************************************************************
+//
+//! Initialize the temperature sensor
+//!
+//! \param None
+//!
+//! This function
+//!    1. Get the device manufacturer and version
+//!    2. Add any initialization here
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+int
+TMP006DrvOpen()
+{
+    unsigned short usManufacID, usDevID, usConfigReg;
 
-            //critKey = osi_EnterCritical();
+    //
+    // Get the manufacturer ID
+    //
+    RET_IF_ERR(GetRegisterValue_temp(TMP006_MANUFAC_ID_REG_ADDR, &usManufacID));
+    DBG_PRINT("Manufacturer ID: 0x%x\n\r", usManufacID);
+    if(usManufacID != TMP006_MANUFAC_ID)
+    {
+        DBG_PRINT("Error in Manufacturer ID\n\r");
+        return FAILURE;
+    }
 
-            iRet = BMA222ReadNew(&accX, &accY, &accZ);
-            if(iRet)
-            {
-                //In case of error/ No New Data return
-                return;
-            }
+    //
+    // Get the device ID
+    //
+    RET_IF_ERR(GetRegisterValue_temp(TMP006_DEVICE_ID_REG_ADDR, &usDevID));
+    DBG_PRINT("Device ID: 0x%x\n\r", usDevID);
+    if(usDevID != TMP006_DEVICE_ID)
+    {
+        DBG_PRINT("Error in Device ID\n");
+        return FAILURE;
+    }
 
+    //
+    // Get the configuration register value
+    //
+    RET_IF_ERR(GetRegisterValue_temp(TMP006_CONFIG_REG_ADDR, &usConfigReg));
+    DBG_PRINT("Configuration register value: 0x%x\n\r", usConfigReg);
 
-            g_accXIntervalSum += accX;
-            g_accYIntervalSum += accY;
-            g_accZIntervalSum += accZ;
-
-            g_accSampleCount++;
-            //osi_ExitCritical(critKey);
+    return SUCCESS;
+}
+//****************************************************************************
+//
+//! Compute the temperature value from the sensor voltage and die temp.
+//!
+//! \param dVobject is the sensor voltage value
+//! \param dTAmbient is the local die temperature
+//!
+//! This function
+//!    1. Computes the temperature from the VObject and TAmbient values
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+double ComputeTemperature(double dVobject, double dTAmbient)
+{
+    //
+    // This algo is obtained from
+    // http://processors.wiki.ti.com/index.php/SensorTag_User_Guide
+    // #IR_Temperature_Sensor
+    //
+    double Tdie2 = dTAmbient + 273.15;
+    const double S0 = 6.4E-14;            // Calibration factor
+    const double a1 = 1.75E-3;
+    const double a2 = -1.678E-5;
+    const double b0 = -2.94E-5;
+    const double b1 = -5.7E-7;
+    const double b2 = 4.63E-9;
+    const double c2 = 13.4;
+    const double Tref = 298.15;
+    double S = S0*(1+a1*(Tdie2 - Tref)+a2*pow((Tdie2 - Tref),2));
+    double Vos = b0 + b1*(Tdie2 - Tref) + b2*pow((Tdie2 - Tref),2);
+    double fObj = (dVobject - Vos) + c2*pow((dVobject - Vos),2);
+    double tObj = pow(pow(Tdie2,4) + (fObj/S),.25);
+    tObj = (tObj - 273.15);
+    return tObj;
 }
 
+//****************************************************************************
+//
+//! Get the temperature value
+//!
+//! \param pfCurrTemp is the pointer to the temperature value store
+//!
+//! This function
+//!    1. Get the sensor voltage reg and ambient temp reg values
+//!    2. Compute the temperature from the read values
+//!
+//! \return 0: Success, < 0: Failure.
+//
+//****************************************************************************
+int
+TMP006DrvGetTemp(float *pfCurrTemp)
+{
+    unsigned short usVObjectRaw, usTAmbientRaw;
+    double dVObject, dTAmbient;
+    //
+    // Get the sensor voltage register value
+    //
+    RET_IF_ERR(GetRegisterValue_temp(TMP006_VOBJECT_REG_ADDR, &usVObjectRaw));
+    //
+    // Get the ambient temperature register value
+    //
+    RET_IF_ERR(GetRegisterValue_temp(TMP006_TAMBIENT_REG_ADDR, &usTAmbientRaw));
+    //
+    // Apply the format conversion
+    //
+    dVObject = ((short)usVObjectRaw) * 156.25e-9;
+    dTAmbient = ((short)usTAmbientRaw) / 128;
 
-        //*****************************************************************************
-        //
-        //! ReadAccSensor
-        //!
-        //!    @brief  Calculate Averages of Accelerometer Globals
-        //!
-        //!
-        //!     @return none
-        //!
-        //!
-        //
-        //*****************************************************************************
-        void SetAccAvg()
-        {
-        	//unsigned long critKey;
+    *pfCurrTemp = ComputeTemperature(dVObject, dTAmbient);
 
-            //critKey = osi_EnterCritical();
-            g_accXAvg = g_accXIntervalSum / g_accSampleCount;
-            g_accYAvg = g_accYIntervalSum / g_accSampleCount;
-            g_accZAvg = g_accZIntervalSum / g_accSampleCount;
-            g_accTotalAvg = (g_accZIntervalSum + g_accYIntervalSum + g_accXIntervalSum ) /
-        		(g_accSampleCount * 3);
+    //
+    // Convert to Farenheit
+    //
+    //*pfCurrTemp = ((*pfCurrTemp * 9) / 5) + 32;
 
-            g_accXIntervalSum = 0;
-            g_accYIntervalSum = 0;
-            g_accZIntervalSum = 0;
-            g_accSampleCount = 0;
-            //osi_ExitCritical(critKey);
-
-        }
+    return SUCCESS;
+}
+//######################################################################################
 
 
 
 int main()
 {
     long lRetVal = -1;
+    //unsigned int uiGPIOPort;//02/17/2017
+    //unsigned char pucGPIOPin;//02/17/2017
+    unsigned char delay_cntr;
+    unsigned int  uiChannel;
+    unsigned int  uiIndex=0;
+    unsigned long ulSample;
+
+    float sensorTemp;
+    int cx;
+    const char *strPtr;
+    const char *strPtr1;
     HTTPCli_Struct httpClient;
+    //char c = 0;
 
 
     //
@@ -1536,46 +2379,132 @@ int main()
     //
     InitTerm();
 
-    //*********************************************************************
-    // I2C Init	I2C Init I2C Init I2C Init I2C Init I2C Init I2C Init
-    //
-    lRetVal = I2C_IF_Open(I2C_MASTER_MODE_FST);
-    if(lRetVal < 0)
-    {
-    	ERR_PRINT(lRetVal);
-        LOOP_FOREVER();
-    }
     //************************************************************************
-
-    //Init Temprature Sensor Init Temprature Sensor Init Temprature Sensor
-        lRetVal = TMP006DrvOpen();
-        if(lRetVal < 0)
-        {
-            ERR_PRINT(lRetVal);
-            LOOP_FOREVER();
-        }
-
-        //Init Accelerometer Sensor Init Accelerometer Sensor Init Accelerometer Sensor
-        lRetVal = BMA222Open();
-        if(lRetVal < 0)
-        {
-            ERR_PRINT(lRetVal);
-            LOOP_FOREVER();
-        }
-
-
 
     //
     // Display banner
     //
     DisplayBanner(APP_NAME);
 
+    // Configure PIN_58 for GPIO Input
+
+    //c = MAP_UARTCharGetNonBlocking(CONSOLE);        // Get a single character
+    //if (c != 0){
+    	//UART_PRINT("\n\r\rExecuting UptimeTask Enter a string and press enter\n\r\r");
+    	//GETChar(&passwrd[0]);
+    //}
+
+   // unsigned char ucPinValue;
+
+   //Read GPIO3: pin58 - Light Sensor
+   GPIO_IF_GetPortNPin(SH_GPIO_3,&uiGPIOPort,&pucGPIOPin);
+   Lght = GPIO_IF_Get(SH_GPIO_3,uiGPIOPort,pucGPIOPin);
+
+
+   //Read GPIO22: SW2
+   GPIO_IF_GetPortNPin(SH_GPIO_22,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+   ucPinValue = GPIO_IF_Get(SH_GPIO_22,uiGPIOPort,pucGPIOPin);	// Read pin status of GPIO22
+
+   GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+   GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
+   //MAP_GPIOPinWrite(GPIOA1_BASE,0x2,0x2); //Turn ON RED LED
+   //MAP_GPIOPinWrite(GPIOA1_BASE,0x2,0); 	//Turn OFF RED LED
+   //GPIODirModeSet(GPIOA1_BASE, 0x2, GPIO_DIR_MODE_OUT); //RED LED
+   //If Connected to VCC, Mode is AP
+      //if(ucPinValue == 1)
+      //{
+           //If button is pressed
+           //g_uiDeviceModeConfig = ROLE_AP;
+       //}
+       //else
+       //{
+           //If button is NOT pressed
+          // g_uiDeviceModeConfig = ROLE_STA;
+       //}
+    //#################GET PASSWORD FROM CONSOLE############################
+#ifdef cred
+    if(ucPinValue == 1){//If SW2 is pressed
+    iStringLength = 0;
+
+    UART_PRINT("Enter password:\n\r");
+    cCharacter = UartGetChar(); // Get the first character
+    while(cCharacter != '\r' && cCharacter != '\n' && (iStringLength <= MAX_STRING_LENGTH -1)){
+    	g_iCounter++;
+    	if(cCharacter == '\r' || cCharacter == '\n' || (iStringLength >= MAX_STRING_LENGTH -1))
+    	{
+    		if(iStringLength >= MAX_STRING_LENGTH - 1)
+    		{
+    			UartPutChar(cCharacter);
+    			cPassword[iStringLength] = cCharacter; //password
+    			iStringLength++;
+    		}
+
+    		iStringLength++;
+    		cPassword[iStringLength] = '\0';
+
+    		iStringLength = 0;
+    		//
+    		// Echoes the input string
+    		//
+    		Report("\n\r Password: %s", cPassword);
+    		UART_PRINT("\n\r");
+    	}
+    	else
+    	{
+    		UartPutChar(cCharacter);
+    		cPassword[iStringLength] = cCharacter;
+    		iStringLength++;
+    	}
+    	cCharacter = UartGetChar();
+    }
+
+
+    //#####################GET SSID FROM CONSOLE############################
+
+    iStringLength = 0;
+    UART_PRINT("Enter SSID name:\n\r");
+    cCharacter = UartGetChar();
+    while(cCharacter != '\r' && cCharacter != '\n' && (iStringLength <= MAX_STRING_LENGTH -1)){
+
+    	g_iCounter++;
+    	if(cCharacter == '\r' || cCharacter == '\n' || (iStringLength >= MAX_STRING_LENGTH -1))
+    	{
+    		if(iStringLength >= MAX_STRING_LENGTH - 1)
+    		{
+    			UartPutChar(cCharacter);
+    			cSSID_NAME[iStringLength] = cCharacter; //password
+    			iStringLength++;
+    		}
+
+    		iStringLength++;
+    		cSSID_NAME[iStringLength] = '\0';
+    		iStringLength = 0;
+    		//
+    		// Echoes the input string
+    		//
+    		Report("\n\r SSID: %s", cSSID_NAME);
+    		UART_PRINT("\n\r");
+    	}
+    	else
+    	{
+    		UartPutChar(cCharacter);
+    		cSSID_NAME[iStringLength] = cCharacter;
+    		iStringLength++;
+    	}
+    	cCharacter = UartGetChar();
+    }
+    }
+    else{
+    	//No case
+    }
+#endif
+
     InitializeAppVariables();
 
     lRetVal = ConnectToAP();
     if(lRetVal < 0)
     {
-        LOOP_FOREVER();
+    	LOOP_FOREVER();
     }
 
     lRetVal = ConnectToHTTPServer(&httpClient);
@@ -1584,14 +2513,31 @@ int main()
         LOOP_FOREVER();
     }
 
-    UART_PRINT("\n\r");
-    UART_PRINT("HTTP Post Begin:\n\r");
-    lRetVal = HTTPPostMethod(&httpClient);
+    //
+    // I2C Init	I2C Init I2C Init I2C Init I2C Init I2C Init I2C Init
+    //
+    lRetVal = I2C_IF_Open(I2C_MASTER_MODE_FST);
     if(lRetVal < 0)
     {
-    	UART_PRINT("HTTP Post failed.\n\r");
+    	ERR_PRINT(lRetVal);
+        LOOP_FOREVER();
     }
-    UART_PRINT("HTTP Post End:\n\r");
+
+    //Init Temprature Sensor Init Temprature Sensor Init Temprature Sensor
+    lRetVal = TMP006DrvOpen();
+    if(lRetVal < 0)
+    {
+    	ERR_PRINT(lRetVal);
+        LOOP_FOREVER();
+    }
+
+    //Init Accelerometer Sensor Init Accelerometer Sensor Init Accelerometer Sensor
+    lRetVal = BMA222Open();
+    if(lRetVal < 0)
+    {
+    	ERR_PRINT(lRetVal);
+    	LOOP_FOREVER();
+    }
 
     UART_PRINT("\n\r");
     UART_PRINT("HTTP Delete Begin:\n\r");
@@ -1623,8 +2569,180 @@ int main()
     UART_PRINT("HTTP Get End:\n\r");
     UART_PRINT("\n\r");
 
+    AccSample(); // Just do a single reading for now. TODO: Make Async.
+    SetAccAvg(); // g_accXAvg, g_accYAvg, g_accZAvg, g_accTotalAvg
+
+    TMP006DrvGetTemp(&sensorTemp);
+
+    //Create Web page ############################################################################################
+
+    //Read GPIO3: pin58 - Light Sensor
+    GPIO_IF_GetPortNPin(SH_GPIO_3,&uiGPIOPort,&pucGPIOPin);
+    Lght = GPIO_IF_Get(SH_GPIO_3,uiGPIOPort,pucGPIOPin);
+
+    //ADC ####ADC####ADC####ADC####ADC####ADC####ADC##############################################################
+    //
+    // Pinmux for the selected ADC input pin
+    //
+    MAP_PinTypeADC(PIN_60,PIN_MODE_255);
+    uiChannel = ADC_CH_3;
+    //
+    // Configure ADC timer which is used to timestamp the ADC data samples
+    //
+    MAP_ADCTimerConfig(ADC_BASE,2^17);
+
+    //
+    // Enable ADC timer which is used to timestamp the ADC data samples
+    //
+    MAP_ADCTimerEnable(ADC_BASE);
+
+    //
+    // Enable ADC module
+    //
+    MAP_ADCEnable(ADC_BASE);
+
+    //
+    // Enable ADC channel
+    //
+    MAP_ADCChannelEnable(ADC_BASE, uiChannel);
+
+
+    //"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85"//55 characters
+    cx = snprintf(buf, 99, "acc=%.0f & accX=%.0f & accY=%.0f & accZ=%.0f & sensortemp=%.2f",
+    		g_accTotalAvg,
+    		g_accXAvg,
+    		g_accYAvg,
+    		g_accZAvg,
+    		sensorTemp );//cx is indice of the last buf[cx]
+
+    if (cx>=0 && cx<99)	{// check returned value
+    	if (Lght == 0){
+        	strPtr1 = "& Light=Light is  ON";//74
+        }
+        else{
+        	strPtr1 = "& Light=Light is OFF";
+        }
+
+        strcpy ( &buf[(cx - 1)], strPtr1 );
+        strPtr = " & loc=Los Angeles \0";	// Your location. (95)
+        strcpy ( &buf[(76)], strPtr );//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85 & loc=Los Angeles \0"
+    }
+
+    UART_PRINT(buf);//Print the above buffer
+    UART_PRINT("\n\r");
+
+    lRetVal = HTTPPostMethod_data(&httpClient);//Make the web page and write data
+    UART_PRINT("\n\r");
+    if(lRetVal < 0)
+    {
+    	UART_PRINT("HTTP Post with Temperature and Accelerometer Data failed.\n\r");
+    }//Web page is created
+    //#####################################################################################################################
+
+    while(1){
+
+    	//#define SEC_TO_LOOP(x)        ((80000000/5)*x)
+    	for (delay_cntr = 0; delay_cntr < 2; delay_cntr++){
+    		MAP_UtilsDelay(40000000);//2.5 sec delay
+    	}
+
+    	AccSample(); // Just do a single reading for now. TODO: Make Async.
+    	SetAccAvg(); // g_accXAvg, g_accYAvg, g_accZAvg, g_accTotalAvg
+
+    	TMP006DrvGetTemp(&sensorTemp);
+
+    	//Read GPIO3: pin58 - Light Sensor
+    	GPIO_IF_GetPortNPin(SH_GPIO_3,&uiGPIOPort,&pucGPIOPin);
+    	Lght = GPIO_IF_Get(SH_GPIO_3,uiGPIOPort,pucGPIOPin);
+
+
+    	//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85"//55 characters
+    	cx = snprintf(buf, 99, "acc=%.0f & accX=%.0f & accY=%.0f & accZ=%.0f & sensortemp=%.2f",
+    	    	 g_accTotalAvg,
+    	    	 g_accXAvg,
+    	    	 g_accYAvg,
+    	    	 g_accZAvg,
+    	    	 sensorTemp );//cx is indice of the last buf[cx]
+    	if (cx>=0 && cx<99)	{// check returned value
+    		//bufPtr = &buf[cx];//bufPtr now points to buf[cx]
+    		//snprintf ( buf+cx, 99-cx, ", and the half of that is %d.", 60/2/2 );
+
+    		if (Lght == 0){
+    			strPtr1 = "& Light=Light is  ON";//74
+    		}
+    		else{
+    			strPtr1 = "& Light=Light is OFF";
+    		}
+
+    		strcpy ( &buf[(cx - 1)], strPtr1 );
+
+    		strPtr = " & loc=Los Angeles \0";	// Your location. (95)
+
+    		//char * strcpy ( char * destination, const char * source );
+    		//snprintf ends string with '\0' since the string needs to continue '\0' has to be replaced with a character
+    		//that is why cx - 1
+    		//strcpy ( &buf[(cx - 1)], strPtr );//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85 & loc=Los Angeles \0"
+    		strcpy ( &buf[(76)], strPtr );//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85 & loc=Los Angeles \0"
+    	}
+
+
+    	UART_PRINT(buf);
+    	UART_PRINT("\n\r");
+
+    	for (delay_cntr = 0; delay_cntr < 2; delay_cntr++){
+    		MAP_UtilsDelay(40000000);//2.5 sec delay
+    	}
+
+    	lRetVal = HTTPPostMethod_data(&httpClient);
+    	UART_PRINT("\n\r");
+    	if(lRetVal < 0)
+    	{
+    		UART_PRINT("HTTP Post with Temperature and Accelerometer Data failed.\n\r");
+    	}//UART_PRINT("HTTP Post with Temperature and Accelerometer Data End:\n\r");
+
+
+
+    	//Read web page
+    	for (delay_cntr = 0; delay_cntr < 2; delay_cntr++){
+    		MAP_UtilsDelay(40000000);//2.5 sec delay
+    	}
+
+    	lRetVal = HTTPGetPageMethod(&httpClient);
+    	if(lRetVal < 0)
+    	{
+    		UART_PRINT("HTTP Post Get failed.\n\r");
+    	}
+
+    	//ADC
+    	while(uiIndex < NO_OF_SAMPLES + 4)
+    	{
+    		if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChannel))
+    		{
+    			ulSample = MAP_ADCFIFORead(ADC_BASE, uiChannel);
+    			pulAdcSamples[uiIndex++] = ulSample;
+    		}
+
+
+    	}
+
+    	MAP_ADCChannelDisable(ADC_BASE, uiChannel);
+
+    	uiIndex = 0;
+
+    	while(uiIndex < NO_OF_SAMPLES)
+    	{
+    	UART_PRINT("\n\rVoltage is %f\n\r",(((float)((pulAdcSamples[4+uiIndex] >> 2 ) & 0x0FFF))*1.4)/4096);
+    		uiIndex++;
+    	}
+
+
+    	//UART_PRINT("\n\rVoltage is %f\n\r",((pulAdcSamples[4] >> 2 ) & 0x0FFF)*1.4/4096);
+    	UART_PRINT("\n\r");
+
+    }
+
     // Stop the CC3200 device
 
-    LOOP_FOREVER();
+    //LOOP_FOREVER();
 }
 

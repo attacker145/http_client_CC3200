@@ -1,6 +1,6 @@
 # FIXED
 
-network_common.obj: C:/ti/CC3200SDK_1.3.0/cc3200-sdk/example/common/network_common.c
+network_common.obj: ../network_common.c
 network_common.obj: C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.1.LTS/include/stdlib.h
 network_common.obj: C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.1.LTS/include/linkage.h
 network_common.obj: C:/ti/CC3200SDK_1.3.0/cc3200-sdk/simplelink/include/simplelink.h
@@ -20,7 +20,7 @@ network_common.obj: C:/ti/CC3200SDK_1.3.0/cc3200-sdk/simplelink/include/netcfg.h
 network_common.obj: C:/ti/CC3200SDK_1.3.0/cc3200-sdk/simplelink/include/wlan_rx_filters.h
 network_common.obj: C:/ti/CC3200SDK_1.3.0/cc3200-sdk/simplelink/include/../source/nonos.h
 
-C:/ti/CC3200SDK_1.3.0/cc3200-sdk/example/common/network_common.c: 
+../network_common.c: 
 C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.1.LTS/include/stdlib.h: 
 C:/ti/ccsv7/tools/compiler/ti-cgt-arm_16.9.1.LTS/include/linkage.h: 
 C:/ti/CC3200SDK_1.3.0/cc3200-sdk/simplelink/include/simplelink.h: 

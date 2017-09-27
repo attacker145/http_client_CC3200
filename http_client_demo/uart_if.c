@@ -3,35 +3,35 @@
 //
 // uart interface file: Prototypes and Macros for UARTLogger
 //
-// Copyright (C) 2014 Texas Instruments Incorporated - http://www.ti.com/ 
-// 
-// 
-//  Redistribution and use in source and binary forms, with or without 
-//  modification, are permitted provided that the following conditions 
+// Copyright (C) 2014 Texas Instruments Incorporated - http://www.ti.com/
+//
+//
+//  Redistribution and use in source and binary forms, with or without
+//  modification, are permitted provided that the following conditions
 //  are met:
 //
-//    Redistributions of source code must retain the above copyright 
+//    Redistributions of source code must retain the above copyright
 //    notice, this list of conditions and the following disclaimer.
 //
 //    Redistributions in binary form must reproduce the above copyright
-//    notice, this list of conditions and the following disclaimer in the 
-//    documentation and/or other materials provided with the   
+//    notice, this list of conditions and the following disclaimer in the
+//    documentation and/or other materials provided with the
 //    distribution.
 //
 //    Neither the name of Texas Instruments Incorporated nor the names of
 //    its contributors may be used to endorse or promote products derived
 //    from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
-//  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+//  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
 //  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-//  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
-//  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
+//  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+//  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
 //  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
 //  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-//  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
-//  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
+//  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+//  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 //  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 //*****************************************************************************
@@ -80,11 +80,11 @@ unsigned int ilen=1;
 //! \return none
 //
 //*****************************************************************************
-void 
+void
 InitTerm()
 {
 #ifndef NOTERM
-  MAP_UARTConfigSetExpClk(CONSOLE,MAP_PRCMPeripheralClockGet(CONSOLE_PERIPH), 
+  MAP_UARTConfigSetExpClk(CONSOLE,MAP_PRCMPeripheralClockGet(CONSOLE_PERIPH),
                   UART_BAUD_RATE, (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
                    UART_CONFIG_PAR_NONE));
 #endif
@@ -103,7 +103,7 @@ InitTerm()
 //! \return none
 //
 //*****************************************************************************
-void 
+void
 Message(const char *str)
 {
 #ifndef NOTERM
@@ -127,7 +127,7 @@ Message(const char *str)
 //! \return none
 //
 //*****************************************************************************
-void 
+void
 ClearTerm()
 {
     Message("\33[2J\r");
@@ -137,12 +137,12 @@ ClearTerm()
 //
 //! Error Function
 //!
-//! \param 
+//! \param
 //!
 //! \return none
-//! 
+//!
 //*****************************************************************************
-void 
+void
 Error(char *pcFormat, ...)
 {
 #ifndef NOTERM
@@ -163,14 +163,14 @@ Error(char *pcFormat, ...)
 //! \param  ucBufLen is the length of buffer store available
 //!
 //! \return Length of the bytes received. -1 if buffer length exceeded.
-//! 
+//!
 //*****************************************************************************
 int
 GetCmd(char *pcBuffer, unsigned int uiBufLen)
 {
     char cChar;
     int iLen = 0;
-    
+
     //
     // Wait to receive a character over UART
     //
@@ -181,13 +181,13 @@ GetCmd(char *pcBuffer, unsigned int uiBufLen)
 #endif
     }
     cChar = MAP_UARTCharGetNonBlocking(CONSOLE);
-    
+
     //
     // Echo the received character
     //
     MAP_UARTCharPut(CONSOLE, cChar);
     iLen = 0;
-    
+
     //
     // Checking the end of Command
     //
@@ -200,19 +200,19 @@ GetCmd(char *pcBuffer, unsigned int uiBufLen)
         {
             return -1;
         }
-        
+
         //
         // Copying Data from UART into a buffer
         //
         if(cChar != '\b')
-        { 
+        {
             *(pcBuffer + iLen) = cChar;
             iLen++;
         }
         else
         {
             //
-            // Deleting last character when you hit backspace 
+            // Deleting last character when you hit backspace
             //
             if(iLen)
             {
@@ -297,7 +297,7 @@ int Report(const char *pcFormat, ...)
 
   char *pcBuff, *pcTemp;
   int iSize = 256;
- 
+
   va_list list;
   pcBuff = (char*)malloc(iSize);
   if(pcBuff == NULL)
@@ -317,7 +317,7 @@ int Report(const char *pcFormat, ...)
       {
           iSize*=2;
           if((pcTemp=realloc(pcBuff,iSize))==NULL)
-          { 
+          {
               Message("Could not reallocate memory\n\r");
               iRet = -1;
               break;
@@ -326,12 +326,12 @@ int Report(const char *pcFormat, ...)
           {
               pcBuff=pcTemp;
           }
-          
+
       }
   }
   Message(pcBuff);
   free(pcBuff);
-  
+
 #endif
   return iRet;
 }
