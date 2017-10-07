@@ -107,6 +107,7 @@
 
 #define GET_REQUEST_URI_PAGE	"/data.html"							//*****************************************************
 #define GET_REQUEST_URI 	"/get.php?id=goodbye&mode=run"		//the text that follows the ? is the query string
+#define GET_action_page		"/action_page.php?id=goodbye&mode=run"	//action_page.php
 //#define GET_REQUEST_URI 	"/get.php"
 
 //#define HOST_NAME       	"httpbin.org" //"<host name>"
@@ -882,13 +883,9 @@ int ParseJSONData(char *ptr)
 
 /*!
     \brief This function read respose from server and dump on console
-
     \param[in]      httpClient - HTTP Client object
-
     \return         0 on success else -ve
-
     \note
-
     \warning
 */
 static int readResponse(HTTPCli_Handle httpClient)
@@ -927,7 +924,6 @@ static int readResponse(HTTPCli_Handle httpClient)
 			/* Note:
                     1. id will be same as index of fileds in filter array setted
                     in previous HTTPCli_setResponseFields() call.
-
                     2. moreFlags will be set to 1 by HTTPCli_getResponseField(), if  field
                     value could not be completely read. A subsequent call to
                     HTTPCli_getResponseField() will read remaining field value and will
@@ -1010,9 +1006,7 @@ static int readResponse(HTTPCli_Handle httpClient)
 		            The remaining data will be read in subsequent call to HTTPCli_readResponseBody().
 		            Please refer HTTP Client Libary API documenation @ref HTTPCli_readResponseBody
 		            for more information
-
 char *s;
-
 s = strstr(buff, "hassasin");      // search for string "hassasin" in buff
 if (s != NULL)                     // if successful then s now points at "hassasin"
 {
@@ -1022,7 +1016,6 @@ else
 {
      printf("String not found\n");  // strstr returns NULL if search string not found
 }
-
 			 */
 
 			bytesRead = HTTPCli_readResponseBody(httpClient, (char *)dataBuffer, len, &moreFlags);
@@ -1483,13 +1476,9 @@ static int HTTPGetMethod(HTTPCli_Handle httpClient)
 
 /*!
     \brief This function read respose from server and dump on console
-
     \param[in]      httpClient - HTTP Client object
-
     \return         0 on success else -ve
-
     \note
-
     \warning
 */
 static int readPageResponse(HTTPCli_Handle httpClient)
@@ -1689,7 +1678,7 @@ static int HTTPGetPageMethod(HTTPCli_Handle httpClient)
 
     moreFlags = 0;
 
-    //lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_REQUEST_URI_PAGE, moreFlags);
+    //lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_action_page, moreFlags);
     lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_REQUEST_URI, moreFlags);
     if(lRetVal < 0)
     {
@@ -2355,6 +2344,7 @@ int main()
     unsigned int  uiChannel;
     unsigned int  uiIndex=0;
     unsigned long ulSample;
+    unsigned long ADCsum;
 
     float sensorTemp;
     int cx;
@@ -2713,31 +2703,33 @@ int main()
     		UART_PRINT("HTTP Post Get failed.\n\r");
     	}
 
-    	//ADC
+//ADC  ##########################################################################################################
     	while(uiIndex < NO_OF_SAMPLES + 4)
     	{
-    		if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChannel))
+    		if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChannel))//If a sample is ready
     		{
-    			ulSample = MAP_ADCFIFORead(ADC_BASE, uiChannel);
-    			pulAdcSamples[uiIndex++] = ulSample;
+    			ulSample = MAP_ADCFIFORead(ADC_BASE, uiChannel);//Read the sample
+    			pulAdcSamples[uiIndex++] = ulSample;//Load the sample into an array
     		}
-
 
     	}
 
-    	MAP_ADCChannelDisable(ADC_BASE, uiChannel);
+    	//MAP_ADCChannelDisable(ADC_BASE, uiChannel);//
 
     	uiIndex = 0;
-
-    	while(uiIndex < NO_OF_SAMPLES)
+    	ADCsum = 0;
+    	while(uiIndex < NO_OF_SAMPLES + 4)
     	{
-    	UART_PRINT("\n\rVoltage is %f\n\r",(((float)((pulAdcSamples[4+uiIndex] >> 2 ) & 0x0FFF))*1.4)/4096);
+    		//UART_PRINT("\n\rVoltage is %f\n\r",(((float)((pulAdcSamples[4+uiIndex] >> 2 ) & 0x0FFF))*1.4)/4096);
+    		ADCsum = ADCsum + pulAdcSamples[uiIndex];
     		uiIndex++;
     	}
 
-
+    	ADCsum = ADCsum / (NO_OF_SAMPLES + 4);
+    	UART_PRINT("\n\rVoltage is %f\n\r",((ADCsum >> 2 ) & 0x0FFF)*1.4/4096);
     	//UART_PRINT("\n\rVoltage is %f\n\r",((pulAdcSamples[4] >> 2 ) & 0x0FFF)*1.4/4096);
     	UART_PRINT("\n\r");
+//################################################################################################################
 
     }
 
@@ -2745,4 +2737,3 @@ int main()
 
     //LOOP_FOREVER();
 }
-
