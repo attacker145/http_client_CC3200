@@ -107,7 +107,7 @@
 
 #define GET_REQUEST_URI_PAGE	"/data.html"							//*****************************************************
 #define GET_REQUEST_URI 	"/get.php?id=goodbye&mode=run"		//the text that follows the ? is the query string
-#define GET_action_page		"/action_page.php?id=goodbye&mode=run"	//action_page.php
+#define GET_action_page		"/action_page.php?id=action&mode=page"	//action_page.php
 //#define GET_REQUEST_URI 	"/get.php"
 
 //#define HOST_NAME       	"httpbin.org" //"<host name>"
@@ -184,7 +184,7 @@
 #define G_VAL                   ((float)9.7798)
 
 #define NO_OF_SAMPLES 		128 //ADC
-
+/*
 volatile static float g_accXIntervalSum = 0;
 volatile static float g_accYIntervalSum = 0;
 volatile static float g_accZIntervalSum = 0;
@@ -194,6 +194,18 @@ volatile static float g_accTotalAvg;
 volatile static float g_accXAvg;
 volatile static float g_accYAvg;
 volatile static float g_accZAvg;
+*/
+
+volatile float g_accXIntervalSum = 0;
+volatile float g_accYIntervalSum = 0;
+volatile float g_accZIntervalSum = 0;
+volatile long long g_accSampleCount = 0;
+
+volatile float g_accTotalAvg;
+volatile float g_accXAvg;
+volatile float g_accYAvg;
+volatile float g_accZAvg;
+
 
 unsigned long pulAdcSamples[4096];//ADC
 //static unsigned char g_ucDryerRunning = 0;
@@ -228,6 +240,24 @@ extern unsigned char GPIO_IF_Get(unsigned char ucPin,
              unsigned int uiGPIOPort,
              unsigned char ucGPIOPin);
 extern void GPIO_IF_LedOff(char ledNum);
+
+extern int BlockRead_(unsigned char ucRegAddr,
+          	  	  	  unsigned char *pucBlkData,
+					  unsigned char ucBlkDataSz);
+extern int GetRegisterValue_(unsigned char ucRegAddr, unsigned char *pucRegValue);
+extern int SetRegisterValue_(unsigned char ucRegAddr, unsigned char ucRegValue);
+extern int BMA222Open_();
+extern int BMA222Close_();
+extern int BMA222Read_(signed char *pcAccX, signed char *pcAccY, signed char *pcAccZ);
+extern int BMA222ReadNew_(signed char *pcAccX, signed char *pcAccY, signed char *pcAccZ);
+extern void AccSample_();
+extern void SetAccAvg_();
+extern int GetRegisterValue_temp_(unsigned char ucRegAddr, unsigned short *pusRegValue);
+extern int TMP006DrvOpen_();
+extern double ComputeTemperature_(double dVobject, double dTAmbient);
+extern int TMP006DrvGetTemp_(float *pfCurrTemp);
+//extern int BMA222Open_();
+
 
 //*****************************************************************************
 
@@ -912,7 +942,7 @@ static int readResponse(HTTPCli_Handle httpClient)
 		{
 		case 200:
 		{
-			UART_PRINT("HTTP Status 200\n\r");
+			UART_PRINT("HTTP Status 200");
 			/*
                  Set response header fields to filter response headers. All
                   other than set by this call we be skipped by library.
@@ -940,20 +970,20 @@ static int readResponse(HTTPCli_Handle httpClient)
 				case 0: /* HTTPCli_FIELD_NAME_CONTENT_LENGTH */
 				{
 					len = strtoul((char *)g_buff, NULL, 0);
-					UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONTENT_LENGTH\n\r");
+					//UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONTENT_LENGTH:");
 					UART_PRINT("\n\rLength: %s", g_buff);
 				}
 				break;
 				case 1: /* HTTPCli_FIELD_NAME_CONNECTION */
 				{
-					UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONNECTION\n\r");
+					//UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONNECTION:");
 					UART_PRINT("\n\n\rConnection name: %s", g_buff);
 				}
 				break;
 				case 2: /* HTTPCli_FIELD_NAME_CONTENT_TYPE */
 				{
 
-					UART_PRINT("\n\r HTTPCli_FIELD_NAME_CONTENT_TYPE\n\r");
+					//UART_PRINT("\n\r HTTPCli_FIELD_NAME_CONTENT_TYPE\n\r");
 					UART_PRINT("\n\r Content type : %s", g_buff);
 					if(!strncmp((const char *)g_buff, "application/json",
 							sizeof("application/json")))
@@ -1021,23 +1051,6 @@ else
 			bytesRead = HTTPCli_readResponseBody(httpClient, (char *)dataBuffer, len, &moreFlags);
 			UART_PRINT("\n\n\r Received response body: \n\r %s", dataBuffer);//Print web-site response
 
-			//08/18/2017 --------------------------------------------------------------------------------------
-			char *s;
-			s = strstr(dataBuffer, "checked");//08/18/2017
-			if (s != NULL)                     // if successful then s now points at "checked"08/18/2017
-			{
-				UART_PRINT("\n\n\rFound string at index = %d\n", s - dataBuffer);//08/18/2017
-				GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
-				GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn ON red LED 08/18/2017
-
-			}                                  // index of "checked" in buff can be found by pointer subtraction
-			else
-			{
-				UART_PRINT("\n\n\rNo data received from web page\n");  // strstr returns NULL if search string not found
-				GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
-				GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
-
-			}
 			//--------------------------------------------------------------------------------------------------
 
 
@@ -1490,6 +1503,8 @@ static int readPageResponse(HTTPCli_Handle httpClient)
 	int json = 0;
 	char *dataBuffer=NULL;
 	bool moreFlags = 1;
+	char * str1;
+	char * str2;
 	const char *ids[4] = {
 	                        HTTPCli_FIELD_NAME_CONTENT_LENGTH,
 			                HTTPCli_FIELD_NAME_CONNECTION,
@@ -1501,6 +1516,7 @@ static int readPageResponse(HTTPCli_Handle httpClient)
 	lRetVal = HTTPCli_getResponseStatus(httpClient);
 	if(lRetVal > 0)
 	{
+		UART_PRINT("Read Page Response\n\r");
 		switch(lRetVal)
 		{
 		case 200:
@@ -1519,20 +1535,20 @@ static int readPageResponse(HTTPCli_Handle httpClient)
 				case 0: /* HTTPCli_FIELD_NAME_CONTENT_LENGTH */
 				{
 					len = strtoul((char *)g_buff, NULL, 0);
-					UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONTENT_LENGTH\n\r");
+					//UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONTENT_LENGTH\n\r");
 					UART_PRINT("\n\rLength: %s", g_buff);
 				}
 				break;
 				case 1: /* HTTPCli_FIELD_NAME_CONNECTION */
 				{
-					UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONNECTION\n\r");
+					//UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONNECTION\n\r");
 					UART_PRINT("\n\n\rConnection name: %s", g_buff);
 				}
 				break;
 				case 2: /* HTTPCli_FIELD_NAME_CONTENT_TYPE */
 				{
 
-					UART_PRINT("\n\r HTTPCli_FIELD_NAME_CONTENT_TYPE\n\r");
+					//UART_PRINT("\n\r HTTPCli_FIELD_NAME_CONTENT_TYPE\n\r");
 					UART_PRINT("\n\r Content type : %s", g_buff);
 					if(!strncmp((const char *)g_buff, "application/json",
 							sizeof("application/json")))
@@ -1571,16 +1587,23 @@ static int readPageResponse(HTTPCli_Handle httpClient)
 			}
 
 			bytesRead = HTTPCli_readResponseBody(httpClient, (char *)dataBuffer, len, &moreFlags);
-			UART_PRINT("\n\n\r Received response body: \n\r %s", dataBuffer);//Print web-site response
+			UART_PRINT("\n\r Received response body action_page.php: \n\r %s", dataBuffer);//Print web-site response
 			//UART_PRINT("\n\n\rPartial page:\n");
 			//printf( "%.100s", &dataBuffer[ 7722 ] );
 
-			//08/18/2017 --------------------------------------------------------------------------------------
-			char *s;
-			s = strstr(dataBuffer, "checked");//08/18/2017
-			if (s != NULL)                     // if successful then s now points at "checked"08/18/2017
+			//char *s;
+			str1 = strstr(dataBuffer, "Received name");
+			str2 = strstr(dataBuffer, "Received email");
+
+			if (str1 != NULL)                     // if successful then str1 now points at the first character 'R'
 			{
-				UART_PRINT("\n\n\rFound string at index = %d\n", s - dataBuffer);//08/18/2017
+				//strncpy ( str2, str1, sizeof(str2) );
+				//strncpy ( str2, str1, 13 );//partial copy (only 13 chars):
+				UART_PRINT("\n\n\rFound string at index = %d \n", str1);//&s[i] - &dataBuffer[0]
+				UART_PRINT(str1);
+				UART_PRINT("\n\n\r");
+				UART_PRINT(str2);
+				UART_PRINT("\n\n\r");
 				GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
 				GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn ON red LED 08/18/2017
 
@@ -1678,8 +1701,8 @@ static int HTTPGetPageMethod(HTTPCli_Handle httpClient)
 
     moreFlags = 0;
 
-    //lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_action_page, moreFlags);
-    lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_REQUEST_URI, moreFlags);
+    lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_action_page, moreFlags);
+    //lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_REQUEST_URI, moreFlags);
     if(lRetVal < 0)
     {
         UART_PRINT("Failed to send HTTP GET request.\n\r");
@@ -1687,7 +1710,7 @@ static int HTTPGetPageMethod(HTTPCli_Handle httpClient)
     }
 
      lRetVal = readPageResponse(httpClient);	//Currently returns all the text from data.html with text formatting (prints data to a serial port)
-
+     //lRetVal = readResponse(httpClient);
     return lRetVal;
 }
 
@@ -1856,403 +1879,20 @@ BoardInit(void)
     PRCMCC3200MCUInit();
 }
 
-//****************************************************************************
-//
-//! Returns the value in the specified register
-//!
-//! \param ucRegAddr is the offset register address
-//! \param pucRegValue is the pointer to the register value store
-//!
-//! This function
-//!    1. Returns the value in the specified register
-//!
-//! \return 0: Success, < 0: Failure.
-//
-//****************************************************************************
-int
-GetRegisterValue(unsigned char ucRegAddr, unsigned char *pucRegValue)
-{
-    //
-    // Invoke the readfrom  API to get the required byte
-    //
-    if(I2C_IF_ReadFrom(BMA222_DEV_ADDR, &ucRegAddr, 1,
-                   pucRegValue, 1) != 0)
-    {
-        DBG_PRINT("I2C readfrom failed\n\r");
-        return FAILURE;
-    }
-
-    return SUCCESS;
-}
-
-//****************************************************************************
-//
-//! Sets the value in the specified register
-//!
-//! \param ucRegAddr is the offset register address
-//! \param ucRegValue is the register value to be set
-//!
-//! This function
-//!    1. Returns the value in the specified register
-//!
-//! \return 0: Success, < 0: Failure.
-//
-//****************************************************************************
-int
-SetRegisterValue(unsigned char ucRegAddr, unsigned char ucRegValue)
-{
-    unsigned char ucData[2];
-    //
-    // Select the register to be written followed by the value.
-    //
-    ucData[0] = ucRegAddr;
-    ucData[1] = ucRegValue;
-    //
-    // Initiate the I2C write
-    //
-    if(I2C_IF_Write(BMA222_DEV_ADDR,ucData,2,1) == 0)	// DevAddr Received by I2C:
-    {
-        return SUCCESS;
-    }
-    else
-    {
-        DBG_PRINT("I2C write failed\n\r");
-    }
-
-    return FAILURE;
-}
-
-//****************************************************************************
-//
-//! Reads a block of continuous data
-//!
-//! \param ucRegAddr is the start offset register address
-//! \param pucBlkData is the pointer to the data value store
-//! \param ucBlkDataSz is the size of data to be read
-//!
-//! This function
-//!    1. Returns the data values in the specified store
-//!
-//! \return 0: Success, < 0: Failure.
-//
-//****************************************************************************
-int
-BlockRead(unsigned char ucRegAddr,
-          unsigned char *pucBlkData,
-          unsigned char ucBlkDataSz)
-{
-    //
-    // Invoke the readfrom I2C API to get the required bytes
-    //
-    if(I2C_IF_ReadFrom(BMA222_DEV_ADDR, &ucRegAddr, 1,
-                   pucBlkData, ucBlkDataSz) != 0)
-    {
-        DBG_PRINT("I2C readfrom failed\n");
-        return FAILURE;
-    }
-
-    return SUCCESS;
-}
-
-//****************************************************************************
-//
-//! Initialize the BMA222 accelerometer device with defaults
-//!
-//! \param None
-//!
-//! This function
-//!    1. Reads the CHIP ID.
-//!
-//! \return 0: Success, < 0: Failure.
-//
-//****************************************************************************
-int
-BMA222Open()
-{
-    unsigned char ucRegVal;
-    //
-    // Read the CHIP ID NUM
-    //
-    RET_IF_ERR(GetRegisterValue(BMA222_CHID_ID_NUM, &ucRegVal));
-    DBG_PRINT("CHIP ID: 0x%x\n\r", ucRegVal);
-
-    return SUCCESS;
-}
-
-//****************************************************************************
-//
-//! Place the BMA222 accelerometer device to standby
-//!
-//! \param None
-//!
-//! This function
-//!    1. Sets the device to standby mode.
-//!
-//! \return 0: Success, < 0: Failure.
-//
-//****************************************************************************
-int
-BMA222Close()
-{
-    return SUCCESS;
-}
-
-//****************************************************************************
-//
-//! Get the accelerometer data readings
-//!
-//! \param pfAccX pointer to the AccX store
-//! \param pfAccY pointer to the AccY store
-//! \param pfAccZ pointer to the AccZ store
-//!
-//! This function
-//!    1. Reads the data registers over I2C.
-//!    2. Applies the range conversion to the raw values
-//!
-//! \return 0: Success, < 0: Failure.
-//
-//****************************************************************************
-int
-BMA222Read(signed char *pcAccX, signed char *pcAccY, signed char *pcAccZ)
-{
-    char cAccX = 0;
-    char cAccY = 0;
-    char cAccZ = 0;
-    //
-    // Read the acclerometer output registers LSB and MSB
-    //
-    RET_IF_ERR(BlockRead(BMA222_ACC_DATA_X, (unsigned char *)&cAccX,
-                     sizeof(cAccX)));
-
-    RET_IF_ERR(BlockRead(BMA222_ACC_DATA_Y, (unsigned char *)&cAccY,
-             sizeof(cAccY)));
-
-    RET_IF_ERR(BlockRead(BMA222_ACC_DATA_Z, (unsigned char *)&cAccZ,
-             sizeof(cAccZ)));
-
-    *pcAccX = cAccX;
-    *pcAccY = cAccY;
-    *pcAccZ = cAccZ;
-
-    return SUCCESS;
-}
-
-//****************************************************************************
-//
-//! Get the raw accelerometer data register readings
-//!
-//! \param psAccX pointer to the raw AccX store
-//! \param psAccY pointer to the raw AccY store
-//! \param psAccZ pointer to the raw AccZ store
-//!
-//! This function
-//!    1. Reads the data registers over I2C.
-//!    2. Returns the accelerometer readings
-//!
-//! \return 0: Success, < 0: Failure.
-//
-//****************************************************************************
-int
-BMA222ReadNew(signed char *pcAccX, signed char *pcAccY, signed char *pcAccZ)
-{
-    char cAccX[6];
-
-    //
-    // Read the acclerometer output registers LSB and MSB
-    //
-    RET_IF_ERR(BlockRead(BMA222_ACC_DATA_X_NEW, (unsigned char *)cAccX,6));
-
-     //
-    // Check whether new Sensor Data is available
-    //
-    if((cAccX[0] & 0x1) && (cAccX[2] & 0x1) && (cAccX[4] & 0x1))
-    {
-        *pcAccX = cAccX[1];
-        *pcAccY = cAccX[3];
-        *pcAccZ = cAccX[5];
-        return SUCCESS;
-    }
-
-    //New Sensor Data Not Available
-    return FAILURE;
-
-}
-
-//*****************************************************************************
-//
-//! AccSample
-//!
-//!    @brief  Read Accelerometer Data from Sensor to Globals
-//!
-//!
-//!     @return none
-//!
-//!
-//
-//*****************************************************************************
-void AccSample()
-{
-    signed char accX,accY,accZ;
-    int iRet = -1;
-    //unsigned long critKey;
-
-    //critKey = osi_EnterCritical();
-
-    iRet = BMA222ReadNew(&accX, &accY, &accZ);
-    if(iRet)
-    {
-        //In case of error/ No New Data return
-        return;
-    }
-
-
-    g_accXIntervalSum += accX;
-    g_accYIntervalSum += accY;
-    g_accZIntervalSum += accZ;
-
-    g_accSampleCount++;
-    //osi_ExitCritical(critKey);
-}
-
-//*****************************************************************************
-//
-//! ReadAccSensor
-//!
-//!    @brief  Calculate Averages of Accelerometer Globals
-//!
-//!
-//!     @return none
-//!
-//!
-//
-//*****************************************************************************
-void SetAccAvg()
-{
-	//unsigned long critKey;
-
-    //critKey = osi_EnterCritical();
-    g_accXAvg = g_accXIntervalSum / g_accSampleCount;
-    g_accYAvg = g_accYIntervalSum / g_accSampleCount;
-    g_accZAvg = g_accZIntervalSum / g_accSampleCount;
-    g_accTotalAvg = (g_accZIntervalSum + g_accYIntervalSum + g_accXIntervalSum ) /
-		(g_accSampleCount * 3);
-
-    g_accXIntervalSum = 0;
-    g_accYIntervalSum = 0;
-    g_accZIntervalSum = 0;
-    g_accSampleCount = 0;
-    //osi_ExitCritical(critKey);
-
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Temperature
 //###################################################################################
 
 //****************************************************************************
 //                      LOCAL FUNCTION DEFINITIONS
 //****************************************************************************
-static int GetRegisterValue_temp(unsigned char ucRegAddr,
+//static int GetRegisterValue_temp(unsigned char ucRegAddr,
+//                            unsigned short *pusRegValue);
+//static double ComputeTemperature(double dVobject, double dTAmbient);
+
+extern int GetRegisterValue_temp_(unsigned char ucRegAddr,
                             unsigned short *pusRegValue);
-static double ComputeTemperature(double dVobject, double dTAmbient);
+extern double ComputeTemperature_(double dVobject, double dTAmbient);
 
-
-//****************************************************************************
-//
-//! Returns the value in the specified register
-//!
-//! \param ucRegAddr is the offset register address
-//! \param pusRegValue is the pointer to the register value store
-//!
-//! This function
-//!    1. Returns the value in the specified register
-//!
-//! \return 0: Success, < 0: Failure.
-//
-//****************************************************************************
-int
-GetRegisterValue_temp(unsigned char ucRegAddr, unsigned short *pusRegValue)
-{
-    unsigned char ucRegData[2];
-    //
-    // Invoke the readfrom I2C API to get the required byte
-    //
-    if(I2C_IF_ReadFrom(TMP006_DEV_ADDR, &ucRegAddr, 1,
-                   &ucRegData[0], 2) != 0)
-    {
-        DBG_PRINT("I2C readfrom failed\n\r");
-        return FAILURE;
-    }
-
-    *pusRegValue = (unsigned short)(ucRegData[0] << 8) | ucRegData[1];
-
-    return SUCCESS;
-}
-
-//****************************************************************************
-//
-//! Initialize the temperature sensor
-//!
-//! \param None
-//!
-//! This function
-//!    1. Get the device manufacturer and version
-//!    2. Add any initialization here
-//!
-//! \return 0: Success, < 0: Failure.
-//
-//****************************************************************************
-int
-TMP006DrvOpen()
-{
-    unsigned short usManufacID, usDevID, usConfigReg;
-
-    //
-    // Get the manufacturer ID
-    //
-    RET_IF_ERR(GetRegisterValue_temp(TMP006_MANUFAC_ID_REG_ADDR, &usManufacID));
-    DBG_PRINT("Manufacturer ID: 0x%x\n\r", usManufacID);
-    if(usManufacID != TMP006_MANUFAC_ID)
-    {
-        DBG_PRINT("Error in Manufacturer ID\n\r");
-        return FAILURE;
-    }
-
-    //
-    // Get the device ID
-    //
-    RET_IF_ERR(GetRegisterValue_temp(TMP006_DEVICE_ID_REG_ADDR, &usDevID));
-    DBG_PRINT("Device ID: 0x%x\n\r", usDevID);
-    if(usDevID != TMP006_DEVICE_ID)
-    {
-        DBG_PRINT("Error in Device ID\n");
-        return FAILURE;
-    }
-
-    //
-    // Get the configuration register value
-    //
-    RET_IF_ERR(GetRegisterValue_temp(TMP006_CONFIG_REG_ADDR, &usConfigReg));
-    DBG_PRINT("Configuration register value: 0x%x\n\r", usConfigReg);
-
-    return SUCCESS;
-}
 //****************************************************************************
 //
 //! Compute the temperature value from the sensor voltage and die temp.
@@ -2290,47 +1930,6 @@ double ComputeTemperature(double dVobject, double dTAmbient)
     return tObj;
 }
 
-//****************************************************************************
-//
-//! Get the temperature value
-//!
-//! \param pfCurrTemp is the pointer to the temperature value store
-//!
-//! This function
-//!    1. Get the sensor voltage reg and ambient temp reg values
-//!    2. Compute the temperature from the read values
-//!
-//! \return 0: Success, < 0: Failure.
-//
-//****************************************************************************
-int
-TMP006DrvGetTemp(float *pfCurrTemp)
-{
-    unsigned short usVObjectRaw, usTAmbientRaw;
-    double dVObject, dTAmbient;
-    //
-    // Get the sensor voltage register value
-    //
-    RET_IF_ERR(GetRegisterValue_temp(TMP006_VOBJECT_REG_ADDR, &usVObjectRaw));
-    //
-    // Get the ambient temperature register value
-    //
-    RET_IF_ERR(GetRegisterValue_temp(TMP006_TAMBIENT_REG_ADDR, &usTAmbientRaw));
-    //
-    // Apply the format conversion
-    //
-    dVObject = ((short)usVObjectRaw) * 156.25e-9;
-    dTAmbient = ((short)usTAmbientRaw) / 128;
-
-    *pfCurrTemp = ComputeTemperature(dVObject, dTAmbient);
-
-    //
-    // Convert to Farenheit
-    //
-    //*pfCurrTemp = ((*pfCurrTemp * 9) / 5) + 32;
-
-    return SUCCESS;
-}
 //######################################################################################
 
 
@@ -2351,8 +1950,6 @@ int main()
     const char *strPtr;
     const char *strPtr1;
     HTTPCli_Struct httpClient;
-    //char c = 0;
-
 
     //
     // Board Initialization
@@ -2376,16 +1973,6 @@ int main()
     //
     DisplayBanner(APP_NAME);
 
-    // Configure PIN_58 for GPIO Input
-
-    //c = MAP_UARTCharGetNonBlocking(CONSOLE);        // Get a single character
-    //if (c != 0){
-    	//UART_PRINT("\n\r\rExecuting UptimeTask Enter a string and press enter\n\r\r");
-    	//GETChar(&passwrd[0]);
-    //}
-
-   // unsigned char ucPinValue;
-
    //Read GPIO3: pin58 - Light Sensor
    GPIO_IF_GetPortNPin(SH_GPIO_3,&uiGPIOPort,&pucGPIOPin);
    Lght = GPIO_IF_Get(SH_GPIO_3,uiGPIOPort,pucGPIOPin);
@@ -2397,20 +1984,6 @@ int main()
 
    GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
    GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
-   //MAP_GPIOPinWrite(GPIOA1_BASE,0x2,0x2); //Turn ON RED LED
-   //MAP_GPIOPinWrite(GPIOA1_BASE,0x2,0); 	//Turn OFF RED LED
-   //GPIODirModeSet(GPIOA1_BASE, 0x2, GPIO_DIR_MODE_OUT); //RED LED
-   //If Connected to VCC, Mode is AP
-      //if(ucPinValue == 1)
-      //{
-           //If button is pressed
-           //g_uiDeviceModeConfig = ROLE_AP;
-       //}
-       //else
-       //{
-           //If button is NOT pressed
-          // g_uiDeviceModeConfig = ROLE_STA;
-       //}
     //#################GET PASSWORD FROM CONSOLE############################
 #ifdef cred
     if(ucPinValue == 1){//If SW2 is pressed
@@ -2447,7 +2020,6 @@ int main()
     	}
     	cCharacter = UartGetChar();
     }
-
 
     //#####################GET SSID FROM CONSOLE############################
 
@@ -2514,7 +2086,7 @@ int main()
     }
 
     //Init Temprature Sensor Init Temprature Sensor Init Temprature Sensor
-    lRetVal = TMP006DrvOpen();
+    lRetVal = TMP006DrvOpen_();
     if(lRetVal < 0)
     {
     	ERR_PRINT(lRetVal);
@@ -2522,7 +2094,7 @@ int main()
     }
 
     //Init Accelerometer Sensor Init Accelerometer Sensor Init Accelerometer Sensor
-    lRetVal = BMA222Open();
+    lRetVal = BMA222Open_();
     if(lRetVal < 0)
     {
     	ERR_PRINT(lRetVal);
@@ -2537,9 +2109,9 @@ int main()
     {
     	UART_PRINT("HTTP Delete failed.\n\r");
     }
-    UART_PRINT("HTTP Delete End:\n\r");
+    UART_PRINT("HTTP Delete End.\n\r");
 
-
+//****************************************************
     UART_PRINT("\n\r");
     UART_PRINT("HTTP Put Begin:\n\r");
     lRetVal = HTTPPutMethod(&httpClient);
@@ -2547,30 +2119,30 @@ int main()
     {
     	UART_PRINT("HTTP Put failed.\n\r");
     }
-    UART_PRINT("HTTP Put End:\n\r");
-
+    UART_PRINT("HTTP Put End.\n\r");
+//****************************************************
     UART_PRINT("\n\r");
-    UART_PRINT("HTTP Get Begin:\n\r");
+    UART_PRINT("HTTP Get Method Begin:\n\r");
     lRetVal = HTTPGetMethod(&httpClient);
     if(lRetVal < 0)
     {
     	UART_PRINT("HTTP Post Get failed.\n\r");
     }
-    UART_PRINT("HTTP Get End:\n\r");
+    UART_PRINT("\n\rHTTP Get End.\n\r");
     UART_PRINT("\n\r");
+//****************************************************
+    AccSample_(); // Just do a single reading for now. TODO: Make Async.
+    SetAccAvg_(); // g_accXAvg, g_accYAvg, g_accZAvg, g_accTotalAvg
 
-    AccSample(); // Just do a single reading for now. TODO: Make Async.
-    SetAccAvg(); // g_accXAvg, g_accYAvg, g_accZAvg, g_accTotalAvg
+    TMP006DrvGetTemp_(&sensorTemp);
 
-    TMP006DrvGetTemp(&sensorTemp);
-
-    //Create Web page ############################################################################################
+//Create Web page ############################################################################################
 
     //Read GPIO3: pin58 - Light Sensor
     GPIO_IF_GetPortNPin(SH_GPIO_3,&uiGPIOPort,&pucGPIOPin);
     Lght = GPIO_IF_Get(SH_GPIO_3,uiGPIOPort,pucGPIOPin);
 
-    //ADC ####ADC####ADC####ADC####ADC####ADC####ADC##############################################################
+//ADC ####ADC####ADC####ADC####ADC####ADC####ADC##############################################################
     //
     // Pinmux for the selected ADC input pin
     //
@@ -2626,7 +2198,7 @@ int main()
     if(lRetVal < 0)
     {
     	UART_PRINT("HTTP Post with Temperature and Accelerometer Data failed.\n\r");
-    }//Web page is created
+    }//Web page is created and data is transferred
     //#####################################################################################################################
 
     while(1){
@@ -2636,15 +2208,18 @@ int main()
     		MAP_UtilsDelay(40000000);//2.5 sec delay
     	}
 
-    	AccSample(); // Just do a single reading for now. TODO: Make Async.
-    	SetAccAvg(); // g_accXAvg, g_accYAvg, g_accZAvg, g_accTotalAvg
+    	GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+    	GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
 
-    	TMP006DrvGetTemp(&sensorTemp);
-
+    	//#########################################################################################
+    	//Take readings from sensors
+    	AccSample_(); // Just do a single reading for now. TODO: Make Async.
+    	SetAccAvg_(); // g_accXAvg, g_accYAvg, g_accZAvg, g_accTotalAvg
+    	TMP006DrvGetTemp_(&sensorTemp);
     	//Read GPIO3: pin58 - Light Sensor
     	GPIO_IF_GetPortNPin(SH_GPIO_3,&uiGPIOPort,&pucGPIOPin);
     	Lght = GPIO_IF_Get(SH_GPIO_3,uiGPIOPort,pucGPIOPin);
-
+    	//#########################################################################################
 
     	//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85"//55 characters
     	cx = snprintf(buf, 99, "acc=%.0f & accX=%.0f & accY=%.0f & accZ=%.0f & sensortemp=%.2f",
@@ -2653,9 +2228,7 @@ int main()
     	    	 g_accYAvg,
     	    	 g_accZAvg,
     	    	 sensorTemp );//cx is indice of the last buf[cx]
-    	if (cx>=0 && cx<99)	{// check returned value
-    		//bufPtr = &buf[cx];//bufPtr now points to buf[cx]
-    		//snprintf ( buf+cx, 99-cx, ", and the half of that is %d.", 60/2/2 );
+    	if (cx>=0 && cx<99)	{// check returned value, the last array indice
 
     		if (Lght == 0){
     			strPtr1 = "& Light=Light is  ON";//74
@@ -2664,14 +2237,10 @@ int main()
     			strPtr1 = "& Light=Light is OFF";
     		}
 
-    		strcpy ( &buf[(cx - 1)], strPtr1 );
+    		strcpy ( &buf[(cx - 1)], strPtr1 );//Copy the above string to the send buffer
 
     		strPtr = " & loc=Los Angeles \0";	// Your location. (95)
 
-    		//char * strcpy ( char * destination, const char * source );
-    		//snprintf ends string with '\0' since the string needs to continue '\0' has to be replaced with a character
-    		//that is why cx - 1
-    		//strcpy ( &buf[(cx - 1)], strPtr );//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85 & loc=Los Angeles \0"
     		strcpy ( &buf[(76)], strPtr );//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85 & loc=Los Angeles \0"
     	}
 
@@ -2688,9 +2257,7 @@ int main()
     	if(lRetVal < 0)
     	{
     		UART_PRINT("HTTP Post with Temperature and Accelerometer Data failed.\n\r");
-    	}//UART_PRINT("HTTP Post with Temperature and Accelerometer Data End:\n\r");
-
-
+    	}
 
     	//Read web page
     	for (delay_cntr = 0; delay_cntr < 2; delay_cntr++){
@@ -2704,7 +2271,7 @@ int main()
     	}
 
 //ADC  ##########################################################################################################
-    	while(uiIndex < NO_OF_SAMPLES + 4)
+    	while(uiIndex < NO_OF_SAMPLES + 4)//Collect samples
     	{
     		if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChannel))//If a sample is ready
     		{
@@ -2718,14 +2285,14 @@ int main()
 
     	uiIndex = 0;
     	ADCsum = 0;
-    	while(uiIndex < NO_OF_SAMPLES + 4)
+    	while(uiIndex < NO_OF_SAMPLES + 4)//sum of all samples
     	{
     		//UART_PRINT("\n\rVoltage is %f\n\r",(((float)((pulAdcSamples[4+uiIndex] >> 2 ) & 0x0FFF))*1.4)/4096);
     		ADCsum = ADCsum + pulAdcSamples[uiIndex];
     		uiIndex++;
     	}
+    	ADCsum = ADCsum / (NO_OF_SAMPLES + 4);//ADC average value
 
-    	ADCsum = ADCsum / (NO_OF_SAMPLES + 4);
     	UART_PRINT("\n\rVoltage is %f\n\r",((ADCsum >> 2 ) & 0x0FFF)*1.4/4096);
     	//UART_PRINT("\n\rVoltage is %f\n\r",((pulAdcSamples[4] >> 2 ) & 0x0FFF)*1.4/4096);
     	UART_PRINT("\n\r");

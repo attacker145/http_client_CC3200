@@ -16,6 +16,7 @@ ORDERED_OBJS += \
 "./main.obj" \
 "./network_common.obj" \
 "./pinmux.obj" \
+"./sensors.obj" \
 "./startup_ccs.obj" \
 "./uart_config.obj" \
 "./uart_if.obj" \
@@ -166,8 +167,8 @@ http_client_demo.hex: $(EXE_OUTPUTS)
 # Other Targets
 clean:
 	-$(RM) $(BIN_OUTPUTS__QUOTED)$(EXE_OUTPUTS__QUOTED)
-	-$(RM) "adc.obj" "gpio_if.obj" "i2c_if.obj" "main.obj" "network_common.obj" "pinmux.obj" "startup_ccs.obj" "uart_config.obj" "uart_if.obj" 
-	-$(RM) "adc.d" "gpio_if.d" "i2c_if.d" "main.d" "network_common.d" "pinmux.d" "startup_ccs.d" "uart_config.d" "uart_if.d" 
+	-$(RM) "adc.obj" "gpio_if.obj" "i2c_if.obj" "main.obj" "network_common.obj" "pinmux.obj" "sensors.obj" "startup_ccs.obj" "uart_config.obj" "uart_if.obj" 
+	-$(RM) "adc.d" "gpio_if.d" "i2c_if.d" "main.d" "network_common.d" "pinmux.d" "sensors.d" "startup_ccs.d" "uart_config.d" "uart_if.d" 
 	-@echo 'Finished clean'
 	-@echo ' '
 
