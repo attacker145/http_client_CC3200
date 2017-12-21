@@ -90,29 +90,8 @@
 
 //#define POST_REQUEST_URI 	"/post"
 //#define POST_REQUEST_URI 	"/post.html"
-#define POST_REQUEST_URI 	"/post.php"
 
-							//{ "key": "value",\n\ "key": "value" \n\  }
-//#define POST_DATA           "{\n\"name\":\"xyz\",\n\"address\":\n{\n\"plot#\":12,\n\"street\":\"abc\",\n\"city\":\"ijk\"\n},\n\"age\":30\n}"
-#define POST_DATA "say=Hi&to=Mom"
-
-
-#define DELETE_REQUEST_URI 	"/delete"
-
-
-#define PUT_REQUEST_URI 	"/put"
-#define PUT_DATA            "PUT request."
-
-#define GET_REQUEST_URI_JSON 	"/get"
-
-#define GET_REQUEST_URI_PAGE	"/data.html"							//*****************************************************
-#define GET_REQUEST_URI 	"/get.php?id=goodbye&mode=run"		//the text that follows the ? is the query string
-#define GET_action_page		"/action_page.php?id=action&mode=page"	//action_page.php
-//#define GET_REQUEST_URI 	"/get.php"
-
-//#define HOST_NAME       	"httpbin.org" //"<host name>"
-#define HOST_NAME       	"cnktechlabs.com" //"<host name>" 	********************************************************
-#define HOST_PORT           80
+#include "network_defines.h"
 
 #define PROXY_IP       	    <proxy_ip>
 #define PROXY_PORT          <proxy_port>
@@ -764,12 +743,12 @@ static long WlanConnect()
 
 //#ifdef cred
     if(ucPinValue == 1){
-    	lRetVal = sl_WlanConnect((signed char *)cSSID_NAME, strlen((const char *)cSSID_NAME), 0, &secParams, 0);
+    	lRetVal = sl_WlanConnect((signed char *)cSSID_NAME, strlen((const char *)cSSID_NAME), 0, &secParams, 0);//Entered string - WiFi Name
     	ASSERT_ON_ERROR(lRetVal);
     }
 //#else
     else{
-    	lRetVal = sl_WlanConnect((signed char *)SSID_NAME, strlen((const char *)SSID_NAME), 0, &secParams, 0);
+    	lRetVal = sl_WlanConnect((signed char *)SSID_NAME, strlen((const char *)SSID_NAME), 0, &secParams, 0);//Saved string - WiFi Name
     	ASSERT_ON_ERROR(lRetVal);
     }
 //#endif
@@ -1049,7 +1028,7 @@ else
 			 */
 
 			bytesRead = HTTPCli_readResponseBody(httpClient, (char *)dataBuffer, len, &moreFlags);
-			UART_PRINT("\n\n\r Received response body: \n\r %s", dataBuffer);//Print web-site response
+			UART_PRINT("\n\n\r Received response body, POST method: \n\r %s", dataBuffer);//Print web-site response
 
 			//--------------------------------------------------------------------------------------------------
 
@@ -1116,81 +1095,6 @@ end:
 	{
 	    free(dataBuffer);
     }
-    return lRetVal;
-}
-
-//*****************************************************************************
-//
-//! \brief HTTP POST Demonstration
-//!
-//! \param[in]  httpClient - Pointer to http client
-//!
-//! \return 0 on success else error code on failure
-//!
-//*****************************************************************************
-static int HTTPPostMethod(HTTPCli_Handle httpClient)
-{
-    bool moreFlags = 1;
-    bool lastFlag = 1;
-    char tmpBuf[4];
-    long lRetVal = 0;
-    //buf
-
-    //HTTPCli_Field fields[4] = {
-    //                            {HTTPCli_FIELD_NAME_HOST, HOST_NAME},
-    //                            {HTTPCli_FIELD_NAME_ACCEPT, "*/*"},
-    //                            {HTTPCli_FIELD_NAME_CONTENT_TYPE, "application/json"},
-    //                            {NULL, NULL}
-    //                        };
-
-    HTTPCli_Field fields[4] = {
-                                    {HTTPCli_FIELD_NAME_HOST, HOST_NAME},
-                                    {HTTPCli_FIELD_NAME_ACCEPT, "*/*"},
-                                    {HTTPCli_FIELD_NAME_CONTENT_TYPE, "application/x-www-form-urlencoded"},
-                                    {NULL, NULL}
-                                };
-
-    /* Set request header fields to be send for HTTP request. */
-    HTTPCli_setRequestFields(httpClient, fields);
-
-    /* Send POST method request. */
-    /* Here we are setting moreFlags = 1 as there are some more header fields need to send
-       other than setted in previous call HTTPCli_setRequestFields() at later stage.
-       Please refer HTTP Library API documentaion @ref HTTPCli_sendRequest for more information.
-    */
-    moreFlags = 1;
-    lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_POST, POST_REQUEST_URI, moreFlags);
-    if(lRetVal < 0)
-    {
-        UART_PRINT("Failed to send HTTP POST request header.\n\r");
-        return lRetVal;
-    }
-
-    sprintf((char *)tmpBuf, "%d", (sizeof(POST_DATA)-1));  // POST data body
-
-    /* Here we are setting lastFlag = 1 as it is last header field.
-       Please refer HTTP Library API documentaion @ref HTTPCli_sendField for more information.
-    */
-    lastFlag = 1;
-    lRetVal = HTTPCli_sendField(httpClient, HTTPCli_FIELD_NAME_CONTENT_LENGTH, (const char *)tmpBuf, lastFlag);
-    if(lRetVal < 0)
-    {
-        UART_PRINT("Failed to send HTTP POST request header.\n\r");
-        return lRetVal;
-    }
-
-
-    /* Send POST data/body */
-    lRetVal = HTTPCli_sendRequestBody(httpClient, POST_DATA, (sizeof(POST_DATA)-1));
-    if(lRetVal < 0)
-    {
-        UART_PRINT("Failed to send HTTP POST request body.\n\r");
-        return lRetVal;
-    }
-
-
-    lRetVal = readResponse(httpClient);
-
     return lRetVal;
 }
 
@@ -1494,8 +1398,9 @@ static int HTTPGetMethod(HTTPCli_Handle httpClient)
     \note
     \warning
 */
-static int readPageResponse(HTTPCli_Handle httpClient)
+static int readPageResponse(HTTPCli_Handle httpClient)//Read data.txt page
 {
+
 	long lRetVal = 0;
 	int bytesRead = 0;
 	int id = 0;
@@ -1503,8 +1408,8 @@ static int readPageResponse(HTTPCli_Handle httpClient)
 	int json = 0;
 	char *dataBuffer=NULL;
 	bool moreFlags = 1;
-	char * str1;
-	char * str2;
+	//char * str1;
+	//char * str2;
 	const char *ids[4] = {
 	                        HTTPCli_FIELD_NAME_CONTENT_LENGTH,
 			                HTTPCli_FIELD_NAME_CONNECTION,
@@ -1536,7 +1441,7 @@ static int readPageResponse(HTTPCli_Handle httpClient)
 				{
 					len = strtoul((char *)g_buff, NULL, 0);
 					//UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONTENT_LENGTH\n\r");
-					UART_PRINT("\n\rLength: %s", g_buff);
+					UART_PRINT("\n\rNumber of characters received (action_page.php): %s", g_buff);
 				}
 				break;
 				case 1: /* HTTPCli_FIELD_NAME_CONNECTION */
@@ -1587,14 +1492,39 @@ static int readPageResponse(HTTPCli_Handle httpClient)
 			}
 
 			bytesRead = HTTPCli_readResponseBody(httpClient, (char *)dataBuffer, len, &moreFlags);
-			UART_PRINT("\n\r Received response body action_page.php: \n\r %s", dataBuffer);//Print web-site response
+			UART_PRINT("\n\r ***** Received response body data.txt: %s", dataBuffer);//Print web-site response
 			//UART_PRINT("\n\n\rPartial page:\n");
 			//printf( "%.100s", &dataBuffer[ 7722 ] );
-
 			//char *s;
-			str1 = strstr(dataBuffer, "Received name");
-			str2 = strstr(dataBuffer, "Received email");
+			char * pch;
+			//const char * strstr ( const char * str1, const char * str2 );
+			//		char * strstr (       char * str1, const char * str2 );
+			//Returns a pointer to the first occurrence of str2 in str1, or a null pointer if str2 is not part of str1.
+			//str1 = strstr(dataBuffer, "****** Data page - data.txt *******");
+			//UART_PRINT(str1);
 
+			pch = strtok (dataBuffer," ,.-");// break string into tokens
+			while (pch != NULL)
+			{
+				UART_PRINT ("%s\n", pch);
+				pch = strtok (NULL, " ,.-");
+				if (pch == "roman" || pch == "Roman" || pch == "Chak" || pch == "chak"){
+					//GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn ON red LED 08/18/2017
+			        GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);// Computes port and pin number from the GPIO number
+			    	GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn OFF red LED 08/18/2017
+					MAP_UtilsDelay(10000000);//0.625 sec delay
+			    	GPIO_IF_GetPortNPin(10,&uiGPIOPort,&pucGPIOPin);// Computes port and pin number from the GPIO number
+			    	GPIO_IF_Set(10,uiGPIOPort,pucGPIOPin,1);//Turn OFF orange LED 08/18/2017
+					MAP_UtilsDelay(10000000);//0.625 sec delay
+			    	GPIO_IF_GetPortNPin(11,&uiGPIOPort,&pucGPIOPin);// Computes port and pin number from the GPIO number
+			    	GPIO_IF_Set(11,uiGPIOPort,pucGPIOPin,1);//Turn OFF orange LED 08/18/2017
+					MAP_UtilsDelay(10000000);//0.625 sec delay
+				}
+
+			}
+			UART_PRINT("*******************************************");
+
+			/*
 			if (str1 != NULL)                     // if successful then str1 now points at the first character 'R'
 			{
 				//strncpy ( str2, str1, sizeof(str2) );
@@ -1615,6 +1545,7 @@ static int readPageResponse(HTTPCli_Handle httpClient)
 				GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
 
 			}
+*/
 			//--------------------------------------------------------------------------------------------------
 
 
@@ -1683,7 +1614,7 @@ end:
     return lRetVal;
 }
 
-static int HTTPGetPageMethod(HTTPCli_Handle httpClient)
+static int HTTPGetPageMethod(HTTPCli_Handle httpClient)//Read data.txt page
 {
 
     long lRetVal = 0;
@@ -1701,7 +1632,8 @@ static int HTTPGetPageMethod(HTTPCli_Handle httpClient)
 
     moreFlags = 0;
 
-    lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_action_page, moreFlags);
+    lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, data_txt, moreFlags);
+    //lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_action_page, moreFlags);
     //lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_REQUEST_URI, moreFlags);
     if(lRetVal < 0)
     {
@@ -2061,6 +1993,7 @@ int main()
     }
 #endif
 
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     InitializeAppVariables();
 
     lRetVal = ConnectToAP();
@@ -2074,7 +2007,8 @@ int main()
     {
         LOOP_FOREVER();
     }
-
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//---------------------------------------------------------------------------------------------
     //
     // I2C Init	I2C Init I2C Init I2C Init I2C Init I2C Init I2C Init
     //
@@ -2100,7 +2034,8 @@ int main()
     	ERR_PRINT(lRetVal);
     	LOOP_FOREVER();
     }
-
+//------------------------------------------------------------------------------------------------
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     UART_PRINT("\n\r");
     UART_PRINT("HTTP Delete Begin:\n\r");
     lRetVal = HTTPDeleteMethod(&httpClient);
@@ -2111,7 +2046,6 @@ int main()
     }
     UART_PRINT("HTTP Delete End.\n\r");
 
-//****************************************************
     UART_PRINT("\n\r");
     UART_PRINT("HTTP Put Begin:\n\r");
     lRetVal = HTTPPutMethod(&httpClient);
@@ -2120,7 +2054,7 @@ int main()
     	UART_PRINT("HTTP Put failed.\n\r");
     }
     UART_PRINT("HTTP Put End.\n\r");
-//****************************************************
+
     UART_PRINT("\n\r");
     UART_PRINT("HTTP Get Method Begin:\n\r");
     lRetVal = HTTPGetMethod(&httpClient);
@@ -2130,13 +2064,12 @@ int main()
     }
     UART_PRINT("\n\rHTTP Get End.\n\r");
     UART_PRINT("\n\r");
-//****************************************************
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
     AccSample_(); // Just do a single reading for now. TODO: Make Async.
     SetAccAvg_(); // g_accXAvg, g_accYAvg, g_accZAvg, g_accTotalAvg
 
     TMP006DrvGetTemp_(&sensorTemp);
-
-//Create Web page ############################################################################################
 
     //Read GPIO3: pin58 - Light Sensor
     GPIO_IF_GetPortNPin(SH_GPIO_3,&uiGPIOPort,&pucGPIOPin);
@@ -2192,24 +2125,29 @@ int main()
 
     UART_PRINT(buf);//Print the above buffer
     UART_PRINT("\n\r");
-
+    //Create Web page and post data #################################################################################
     lRetVal = HTTPPostMethod_data(&httpClient);//Make the web page and write data
     UART_PRINT("\n\r");
     if(lRetVal < 0)
     {
     	UART_PRINT("HTTP Post with Temperature and Accelerometer Data failed.\n\r");
     }//Web page is created and data is transferred
-    //#####################################################################################################################
+    //################################################################################################################
+
 
     while(1){
 
     	//#define SEC_TO_LOOP(x)        ((80000000/5)*x)
-    	for (delay_cntr = 0; delay_cntr < 2; delay_cntr++){
+    	for (delay_cntr = 0; delay_cntr < 5; delay_cntr++){
     		MAP_UtilsDelay(40000000);//2.5 sec delay
     	}
 
     	GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
     	GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
+    	GPIO_IF_GetPortNPin(10,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+    	GPIO_IF_Set(10,uiGPIOPort,pucGPIOPin,0);//Turn OFF orange LED 08/18/2017
+    	GPIO_IF_GetPortNPin(11,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+    	GPIO_IF_Set(11,uiGPIOPort,pucGPIOPin,0);//Turn OFF green LED 08/18/2017
 
     	//#########################################################################################
     	//Take readings from sensors
@@ -2245,31 +2183,70 @@ int main()
     	}
 
 
-    	UART_PRINT(buf);
+    	UART_PRINT(buf);//Print the above buffer
     	UART_PRINT("\n\r");
 
     	for (delay_cntr = 0; delay_cntr < 2; delay_cntr++){
     		MAP_UtilsDelay(40000000);//2.5 sec delay
     	}
-
+    	//Create Web page and Post data ########################################################################################
     	lRetVal = HTTPPostMethod_data(&httpClient);
-    	UART_PRINT("\n\r");
-    	if(lRetVal < 0)
-    	{
-    		UART_PRINT("HTTP Post with Temperature and Accelerometer Data failed.\n\r");
+
+//********************************************************** If Got Disconnected - Reconnect ***********************************
+/*
+    	if(lRetVal < 0){//If got disconnected
+
+    		UART_PRINT("HTTP Post data to data.html page failed.\n\r");
+    		UART_PRINT("Reconnecting...\n\r");
+
+    	    InitializeAppVariables();
+
+    	    lRetVal = ConnectToAP();
+    	    if(lRetVal < 0)
+    	    {
+    	    	LOOP_FOREVER();
+    	    }
+
+    	    lRetVal = ConnectToHTTPServer(&httpClient);
+    	    if(lRetVal < 0)
+    	    {
+    	        LOOP_FOREVER();
+    	    }
+
     	}
+*/
+//***************************************************************************************************************************
+
 
     	//Read web page
     	for (delay_cntr = 0; delay_cntr < 2; delay_cntr++){
     		MAP_UtilsDelay(40000000);//2.5 sec delay
     	}
 
-    	lRetVal = HTTPGetPageMethod(&httpClient);
+    	lRetVal = HTTPGetPageMethod(&httpClient);//Read data from the action_page.php
+/*
     	if(lRetVal < 0)
     	{
-    		UART_PRINT("HTTP Post Get failed.\n\r");
-    	}
+    		UART_PRINT("HTTP Get action_page.php page failed.\n\r");
 
+    		UART_PRINT("Reconnecting...\n\r");
+
+    	    InitializeAppVariables();
+
+    	    lRetVal = ConnectToAP();
+    	    if(lRetVal < 0)
+    	    {
+    	    	LOOP_FOREVER();
+    	    }
+
+    	    lRetVal = ConnectToHTTPServer(&httpClient);
+    	    if(lRetVal < 0)
+    	    {
+    	        LOOP_FOREVER();
+    	    }
+    	}
+*/
+//*******************************************************************************************************************
 //ADC  ##########################################################################################################
     	while(uiIndex < NO_OF_SAMPLES + 4)//Collect samples
     	{
