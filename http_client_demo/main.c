@@ -73,6 +73,7 @@
 //#include "bma222drv.h"
 
 #include "gpio_if.h"
+#include "network_if.h"
 
 // HTTP Client lib
 #include <http/client/httpcli.h>
@@ -236,6 +237,7 @@ extern int TMP006DrvOpen_();
 extern double ComputeTemperature_(double dVobject, double dTAmbient);
 extern int TMP006DrvGetTemp_(float *pfCurrTemp);
 //extern int BMA222Open_();
+//extern unsigned short itoa(short cNum, char *cString);
 
 
 //*****************************************************************************
@@ -270,7 +272,8 @@ unsigned char  g_ucConnectionSSID[SSID_LEN_MAX+1]; //Connection SSID
 unsigned char  g_ucConnectionBSSID[BSSID_LEN_MAX]; //Connection BSSID
 unsigned char g_buff[MAX_BUFF_SIZE+1];
 long bytesReceived = 0; // variable to store the file size
-char buf[100];
+//char buf[100];
+char buf[120];
 unsigned char g_ucUARTRecvBuffer1[80];
 unsigned char ucPinValue;//02/17/2017
 unsigned char Lght = 0;
@@ -1497,6 +1500,7 @@ static int readPageResponse(HTTPCli_Handle httpClient)//Read data.txt page
 			//printf( "%.100s", &dataBuffer[ 7722 ] );
 			//char *s;
 			char * pch;
+			unsigned char i;
 			//const char * strstr ( const char * str1, const char * str2 );
 			//		char * strstr (       char * str1, const char * str2 );
 			//Returns a pointer to the first occurrence of str2 in str1, or a null pointer if str2 is not part of str1.
@@ -1510,15 +1514,15 @@ static int readPageResponse(HTTPCli_Handle httpClient)//Read data.txt page
 				pch = strtok (NULL, " ,.-");
 				if (pch == "roman" || pch == "Roman" || pch == "Chak" || pch == "chak"){
 					//GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn ON red LED 08/18/2017
-			        GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);// Computes port and pin number from the GPIO number
-			    	GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn OFF red LED 08/18/2017
-					MAP_UtilsDelay(10000000);//0.625 sec delay
-			    	GPIO_IF_GetPortNPin(10,&uiGPIOPort,&pucGPIOPin);// Computes port and pin number from the GPIO number
-			    	GPIO_IF_Set(10,uiGPIOPort,pucGPIOPin,1);//Turn OFF orange LED 08/18/2017
-					MAP_UtilsDelay(10000000);//0.625 sec delay
-			    	GPIO_IF_GetPortNPin(11,&uiGPIOPort,&pucGPIOPin);// Computes port and pin number from the GPIO number
-			    	GPIO_IF_Set(11,uiGPIOPort,pucGPIOPin,1);//Turn OFF orange LED 08/18/2017
-					MAP_UtilsDelay(10000000);//0.625 sec delay
+			        //GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);// Computes port and pin number from the GPIO number
+			    	//GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn OFF red LED 08/18/2017
+					for (i=0; i<10; i++){
+						GPIO_IF_LedOn(MCU_RED_LED_GPIO);
+						MAP_UtilsDelay(10000000);//0.625 sec delay
+						GPIO_IF_LedOff(MCU_RED_LED_GPIO);
+						MAP_UtilsDelay(10000000);//0.625 sec delay
+					}
+
 				}
 
 			}
@@ -2103,14 +2107,14 @@ int main()
 
 
     //"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85"//55 characters
-    cx = snprintf(buf, 99, "acc=%.0f & accX=%.0f & accY=%.0f & accZ=%.0f & sensortemp=%.2f",
+    cx = snprintf(buf, 119, "acc=%.0f & accX=%.0f & accY=%.0f & accZ=%.0f & sensortemp=%.2f",
     		g_accTotalAvg,
     		g_accXAvg,
     		g_accYAvg,
     		g_accZAvg,
     		sensorTemp );//cx is indice of the last buf[cx]
 
-    if (cx>=0 && cx<99)	{// check returned value
+    if (cx>=0 && cx<119)	{// check returned value
     	if (Lght == 0){
         	strPtr1 = "& Light=Light is  ON";//74
         }
@@ -2134,7 +2138,8 @@ int main()
     }//Web page is created and data is transferred
     //################################################################################################################
 
-
+    float  smpl_nbbr = 0;
+    //char *cString;
     while(1){
 
     	//#define SEC_TO_LOOP(x)        ((80000000/5)*x)
@@ -2142,12 +2147,17 @@ int main()
     		MAP_UtilsDelay(40000000);//2.5 sec delay
     	}
 
-    	GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
-    	GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
-    	GPIO_IF_GetPortNPin(10,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
-    	GPIO_IF_Set(10,uiGPIOPort,pucGPIOPin,0);//Turn OFF orange LED 08/18/2017
-    	GPIO_IF_GetPortNPin(11,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
-    	GPIO_IF_Set(11,uiGPIOPort,pucGPIOPin,0);//Turn OFF green LED 08/18/2017
+    	//GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+    	//GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
+    	//GPIO_IF_GetPortNPin(10,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+    	//GPIO_IF_Set(10,uiGPIOPort,pucGPIOPin,0);//Turn OFF orange LED 08/18/2017
+    	//GPIO_IF_GetPortNPin(11,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
+    	//GPIO_IF_Set(11,uiGPIOPort,pucGPIOPin,0);//Turn OFF green LED 08/18/2017
+    	//MAP_GPIOPinWrite(GPIOA3_BASE,0x10,0x10);
+    	GPIO_IF_LedOff(MCU_RED_LED_GPIO);
+    	//GPIO_IF_LedOff(MCU_ORANGE_LED_GPIO); //Set as I2C
+    	//GPIO_IF_LedOff(MCU_GREEN_LED_GPIO); //Set as I2C
+    	//MAP_GPIOPinWrite(GPIOA3_BASE,0x10,0x10);
 
     	//#########################################################################################
     	//Take readings from sensors
@@ -2157,16 +2167,21 @@ int main()
     	//Read GPIO3: pin58 - Light Sensor
     	GPIO_IF_GetPortNPin(SH_GPIO_3,&uiGPIOPort,&pucGPIOPin);
     	Lght = GPIO_IF_Get(SH_GPIO_3,uiGPIOPort,pucGPIOPin);
+    	//Add sample number
+    	smpl_nbbr ++;
+
+    	//itoa(smpl_nbbr, cString);//itoa(short cNum, char *cString);
     	//#########################################################################################
 
     	//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85"//55 characters
-    	cx = snprintf(buf, 99, "acc=%.0f & accX=%.0f & accY=%.0f & accZ=%.0f & sensortemp=%.2f",
+    	cx = snprintf(buf, 119, "acc=%.0f & accX=%.0f & accY=%.0f & accZ=%.0f & sensortemp=%.2f & SN=%.0f",
     	    	 g_accTotalAvg,
     	    	 g_accXAvg,
     	    	 g_accYAvg,
     	    	 g_accZAvg,
-    	    	 sensorTemp );//cx is indice of the last buf[cx]
-    	if (cx>=0 && cx<99)	{// check returned value, the last array indice
+    	    	 sensorTemp,
+				 smpl_nbbr);//cx is indice of the last buf[cx]. buff has all the data to be transferred
+    	if (cx>=0 && cx<119)	{// check returned value, the last array indice
 
     		if (Lght == 0){
     			strPtr1 = "& Light=Light is  ON";//74
@@ -2179,7 +2194,7 @@ int main()
 
     		strPtr = " & loc=Los Angeles \0";	// Your location. (95)
 
-    		strcpy ( &buf[(76)], strPtr );//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85 & loc=Los Angeles \0"
+    		strcpy ( &buf[(86)], strPtr );//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85 & loc=Los Angeles \0"
     	}
 
 
