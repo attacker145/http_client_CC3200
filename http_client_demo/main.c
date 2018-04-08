@@ -87,7 +87,7 @@
 #define cred
 
 #define APPLICATION_VERSION "1.1.1"
-#define APP_NAME            "HTTP Client"
+#define APP_NAME            "HTTP Client Rev-02"
 
 //#define POST_REQUEST_URI 	"/post"
 //#define POST_REQUEST_URI 	"/post.html"
@@ -186,6 +186,7 @@ volatile float g_accXAvg;
 volatile float g_accYAvg;
 volatile float g_accZAvg;
 
+unsigned char pause = 0;
 
 unsigned long pulAdcSamples[4096];//ADC
 //static unsigned char g_ucDryerRunning = 0;
@@ -221,15 +222,21 @@ extern unsigned char GPIO_IF_Get(unsigned char ucPin,
              unsigned char ucGPIOPin);
 extern void GPIO_IF_LedOff(char ledNum);
 
+
+
 extern int BlockRead_(unsigned char ucRegAddr,
           	  	  	  unsigned char *pucBlkData,
 					  unsigned char ucBlkDataSz);
 extern int GetRegisterValue_(unsigned char ucRegAddr, unsigned char *pucRegValue);
 extern int SetRegisterValue_(unsigned char ucRegAddr, unsigned char ucRegValue);
-extern int BMA222Open_();
 extern int BMA222Close_();
 extern int BMA222Read_(signed char *pcAccX, signed char *pcAccY, signed char *pcAccZ);
 extern int BMA222ReadNew_(signed char *pcAccX, signed char *pcAccY, signed char *pcAccZ);
+
+
+
+
+extern int BMA222Open_();
 extern void AccSample_();
 extern void SetAccAvg_();
 extern int GetRegisterValue_temp_(unsigned char ucRegAddr, unsigned short *pusRegValue);
@@ -1075,6 +1082,7 @@ else
                     In this example we are flushing response body in default
                     case for all other than 200 HTTP Status code.
 			 */
+			break;
 		default:
 			/* Note:
               Need to flush received buffer explicitly as library will not do
@@ -1440,11 +1448,11 @@ static int readPageResponse(HTTPCli_Handle httpClient)//Read data.txt page
 
 				switch(id)
 				{
-				case 0: /* HTTPCli_FIELD_NAME_CONTENT_LENGTH */
+				case 0: /* HTTPCli_FIELD_NAME_CONTENT_LENGTH, case 0 server sent number of bytes in the response*/
 				{
 					len = strtoul((char *)g_buff, NULL, 0);
 					//UART_PRINT("\n\rHTTPCli_FIELD_NAME_CONTENT_LENGTH\n\r");
-					UART_PRINT("\n\rNumber of characters received (action_page.php): %s", g_buff);
+					UART_PRINT("\n\rNumber of characters received (action_page.php): %s", len);// Print number of characters that will be sent by the server
 				}
 				break;
 				case 1: /* HTTPCli_FIELD_NAME_CONNECTION */
@@ -1453,11 +1461,11 @@ static int readPageResponse(HTTPCli_Handle httpClient)//Read data.txt page
 					UART_PRINT("\n\n\rConnection name: %s", g_buff);
 				}
 				break;
-				case 2: /* HTTPCli_FIELD_NAME_CONTENT_TYPE */
+				case 2: /* HTTPCli_FIELD_NAME_CONTENT_TYPE. Content of the response */
 				{
 
 					//UART_PRINT("\n\r HTTPCli_FIELD_NAME_CONTENT_TYPE\n\r");
-					UART_PRINT("\n\r Content type : %s", g_buff);
+					UART_PRINT("\n\r Content type : %s", g_buff);// Print Content of the response
 					if(!strncmp((const char *)g_buff, "application/json",
 							sizeof("application/json")))
 					{
@@ -1495,36 +1503,59 @@ static int readPageResponse(HTTPCli_Handle httpClient)//Read data.txt page
 			}
 
 			bytesRead = HTTPCli_readResponseBody(httpClient, (char *)dataBuffer, len, &moreFlags);
-			UART_PRINT("\n\r ***** Received response body data.txt: %s", dataBuffer);//Print web-site response
+			UART_PRINT("\n\r ***** Received data from data.txt: %s", dataBuffer); //Print data.txt response:
+																				  //roman chak,chakr1@yahoo.com,hello,hello roman,
 			//UART_PRINT("\n\n\rPartial page:\n");
 			//printf( "%.100s", &dataBuffer[ 7722 ] );
 			//char *s;
 			char * pch;
 			unsigned char i;
+			//char *token;
 			//const char * strstr ( const char * str1, const char * str2 );
 			//		char * strstr (       char * str1, const char * str2 );
 			//Returns a pointer to the first occurrence of str2 in str1, or a null pointer if str2 is not part of str1.
 			//str1 = strstr(dataBuffer, "****** Data page - data.txt *******");
 			//UART_PRINT(str1);
+			/*
+			 *
+			 	 int main()
+				{
+    				char str[] = "Geeks-for-Geeks";
 
-			pch = strtok (dataBuffer," ,.-");// break string into tokens
+    				// Returns first token
+    				char *token = strtok(str, "-");
+
+    				// Keep printing tokens while one of the
+    				// delimiters present in str[].
+    				while (token != NULL)
+    				{
+        				printf("%s\n", token);
+        				token = strtok(NULL, "-");
+    				}
+
+    				return 0;
+}
+			 */
+			pch = strtok (dataBuffer," ,.-");// Returns the first token. dataBuffer is the input string shown in the above example.
+			UART_PRINT ("%s\n", pch);
+			const char *r_str = "Roman";
+			int ret;
+			ret = strncmp((const char *)pch, r_str, 5);// compare the first token to "hello"
+			if (ret == 0){
+				//GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn ON red LED 08/18/2017
+		        //GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);// Computes port and pin number from the GPIO number
+		    	//GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn OFF red LED 08/18/2017
+				for (i=0; i<10; i++){
+					GPIO_IF_LedOn(MCU_RED_LED_GPIO);
+					MAP_UtilsDelay(10000000);//0.625 sec delay
+					GPIO_IF_LedOff(MCU_RED_LED_GPIO);
+					MAP_UtilsDelay(10000000);//0.625 sec delay
+				}
+			}
 			while (pch != NULL)
 			{
-				UART_PRINT ("%s\n", pch);
 				pch = strtok (NULL, " ,.-");
-				if (pch == "roman" || pch == "Roman" || pch == "Chak" || pch == "chak"){
-					//GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn ON red LED 08/18/2017
-			        //GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);// Computes port and pin number from the GPIO number
-			    	//GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,1);//Turn OFF red LED 08/18/2017
-					for (i=0; i<10; i++){
-						GPIO_IF_LedOn(MCU_RED_LED_GPIO);
-						MAP_UtilsDelay(10000000);//0.625 sec delay
-						GPIO_IF_LedOff(MCU_RED_LED_GPIO);
-						MAP_UtilsDelay(10000000);//0.625 sec delay
-					}
-
-				}
-
+				UART_PRINT ("%s\n", pch);//print sequence received from the server
 			}
 			UART_PRINT("*******************************************");
 
@@ -1587,11 +1618,13 @@ static int readPageResponse(HTTPCli_Handle httpClient)//Read data.txt page
 			UART_PRINT("File not found. \r\n");
 			/* Handle response body as per requirement.
                   Note:
-                    Developers are advised to take appopriate action for HTTP
+                    Developers are advised to take appropriate action for HTTP
                     return status code else flush the response body.
                     In this example we are flushing response body in default
                     case for all other than 200 HTTP Status code.
 			 */
+
+			break;
 		default:
 			/* Note:
               Need to flush received buffer explicitly as library will not do
@@ -1636,7 +1669,7 @@ static int HTTPGetPageMethod(HTTPCli_Handle httpClient)//Read data.txt page
 
     moreFlags = 0;
 
-    lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, data_txt, moreFlags);
+    lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, data_txt, moreFlags);//data_txt = data.txt
     //lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_action_page, moreFlags);
     //lRetVal = HTTPCli_sendRequest(httpClient, HTTPCli_METHOD_GET, GET_REQUEST_URI, moreFlags);
     if(lRetVal < 0)
@@ -1880,6 +1913,8 @@ int main()
     unsigned int  uiIndex=0;
     unsigned long ulSample;
     unsigned long ADCsum;
+    float  smpl_nbbr = 0;
+
 
     float sensorTemp;
     int cx;
@@ -2107,12 +2142,13 @@ int main()
 
 
     //"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85"//55 characters
-    cx = snprintf(buf, 119, "acc=%.0f & accX=%.0f & accY=%.0f & accZ=%.0f & sensortemp=%.2f",
+    cx = snprintf(buf, 119, "acc=%.0f & accX=%.0f & accY=%.0f & accZ=%.0f & sensortemp=%.2f & SN=%.0f",
     		g_accTotalAvg,
     		g_accXAvg,
     		g_accYAvg,
     		g_accZAvg,
-    		sensorTemp );//cx is indice of the last buf[cx]
+    		sensorTemp,
+			smpl_nbbr);//cx is indice of the last buf[cx]
 
     if (cx>=0 && cx<119)	{// check returned value
     	if (Lght == 0){
@@ -2136,17 +2172,19 @@ int main()
     {
     	UART_PRINT("HTTP Post with Temperature and Accelerometer Data failed.\n\r");
     }//Web page is created and data is transferred
+
+
     //################################################################################################################
 
-    float  smpl_nbbr = 0;
+
     //char *cString;
     while(1){
-
+/*
     	//#define SEC_TO_LOOP(x)        ((80000000/5)*x)
     	for (delay_cntr = 0; delay_cntr < 5; delay_cntr++){
     		MAP_UtilsDelay(40000000);//2.5 sec delay
     	}
-
+*/
     	//GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
     	//GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
     	//GPIO_IF_GetPortNPin(10,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
@@ -2181,6 +2219,14 @@ int main()
     	    	 g_accZAvg,
     	    	 sensorTemp,
 				 smpl_nbbr);//cx is indice of the last buf[cx]. buff has all the data to be transferred
+    	/*
+    	 * Send:
+    	 * acc=XX
+    	 * accX=XX
+    	 * accY=XX
+    	 * accZ=XX
+    	 * sensortemp=XX.XX
+    	 */
     	if (cx>=0 && cx<119)	{// check returned value, the last array indice
 
     		if (Lght == 0){
@@ -2200,13 +2246,13 @@ int main()
 
     	UART_PRINT(buf);//Print the above buffer
     	UART_PRINT("\n\r");
-
-    	for (delay_cntr = 0; delay_cntr < 2; delay_cntr++){
-    		MAP_UtilsDelay(40000000);//2.5 sec delay
-    	}
     	//Create Web page and Post data ########################################################################################
     	lRetVal = HTTPPostMethod_data(&httpClient);
 
+    	if(lRetVal < 0)
+    	{
+    		MAP_PRCMMCUReset(1);
+    	}
 //********************************************************** If Got Disconnected - Reconnect ***********************************
 /*
     	if(lRetVal < 0){//If got disconnected
@@ -2231,36 +2277,13 @@ int main()
     	}
 */
 //***************************************************************************************************************************
-
-
-    	//Read web page
-    	for (delay_cntr = 0; delay_cntr < 2; delay_cntr++){
-    		MAP_UtilsDelay(40000000);//2.5 sec delay
-    	}
-
     	lRetVal = HTTPGetPageMethod(&httpClient);//Read data from the action_page.php
-/*
+
     	if(lRetVal < 0)
     	{
-    		UART_PRINT("HTTP Get action_page.php page failed.\n\r");
-
-    		UART_PRINT("Reconnecting...\n\r");
-
-    	    InitializeAppVariables();
-
-    	    lRetVal = ConnectToAP();
-    	    if(lRetVal < 0)
-    	    {
-    	    	LOOP_FOREVER();
-    	    }
-
-    	    lRetVal = ConnectToHTTPServer(&httpClient);
-    	    if(lRetVal < 0)
-    	    {
-    	        LOOP_FOREVER();
-    	    }
+    		MAP_PRCMMCUReset(1);
     	}
-*/
+
 //*******************************************************************************************************************
 //ADC  ##########################################################################################################
     	while(uiIndex < NO_OF_SAMPLES + 4)//Collect samples
@@ -2288,7 +2311,7 @@ int main()
     	UART_PRINT("\n\rVoltage is %f\n\r",((ADCsum >> 2 ) & 0x0FFF)*1.4/4096);
     	//UART_PRINT("\n\rVoltage is %f\n\r",((pulAdcSamples[4] >> 2 ) & 0x0FFF)*1.4/4096);
     	UART_PRINT("\n\r");
-//################################################################################################################
+
 
     }
 
