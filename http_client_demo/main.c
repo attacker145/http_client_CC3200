@@ -22,7 +22,7 @@
 //                          1. Connect to an access point
 //                          2. Connect to a HTTP Server with and without proxy
 //                          3. Do POST, GET, PUT and DELETE
-//                          4. Parse JSON data using ìJasmine JSON Parserî
+//                          4. Parse JSON data using ‚ÄúJasmine JSON Parser‚Äù
 // Note: To use HTTP Client in minimum mode, user need to compile library (webclient)
 // 			with HTTPCli_LIBTYPE_MIN option.
 //
@@ -164,17 +164,6 @@
 #define G_VAL                   ((float)9.7798)
 
 #define NO_OF_SAMPLES 		128 //ADC
-/*
-volatile static float g_accXIntervalSum = 0;
-volatile static float g_accYIntervalSum = 0;
-volatile static float g_accZIntervalSum = 0;
-volatile static long long g_accSampleCount = 0;
-
-volatile static float g_accTotalAvg;
-volatile static float g_accXAvg;
-volatile static float g_accYAvg;
-volatile static float g_accZAvg;
-*/
 
 volatile float g_accXIntervalSum = 0;
 volatile float g_accYIntervalSum = 0;
@@ -313,14 +302,9 @@ int iStringLength = 0;
 #define MAX_STRING_LENGTH    80
 volatile int g_iCounter = 0;
 
-
-
-
-
 //*****************************************************************************
 //                 GLOBAL VARIABLES -- End
 //*****************************************************************************
-
 
 
 //*****************************************************************************
