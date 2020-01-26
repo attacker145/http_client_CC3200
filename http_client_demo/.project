@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>http_client_demo</name>
+	<name>http_client_demo_V01</name>
 	<comment></comment>
 	<projects>
 	</projects>
@@ -28,7 +28,7 @@
 		<link>
 			<name>NewTargetConfiguration.ccxml</name>
 			<type>1</type>
-			<location>C:/Users/RChak/ti/CCSTargetConfigurations/NewTargetConfiguration.ccxml</location>
+			<location>C:/Users/chakr/ti/CCSTargetConfigurations/NewTargetConfiguration.ccxml</location>
 		</link>
 		<link>
 			<name>gpio_if.c</name>

@@ -22,7 +22,7 @@
 //                          1. Connect to an access point
 //                          2. Connect to a HTTP Server with and without proxy
 //                          3. Do POST, GET, PUT and DELETE
-//                          4. Parse JSON data using “Jasmine JSON Parser”
+//                          4. Parse JSON data using “Jasmine JSON Parser
 // Note: To use HTTP Client in minimum mode, user need to compile library (webclient)
 // 			with HTTPCli_LIBTYPE_MIN option.
 //
@@ -2163,25 +2163,6 @@ int main()
 
     //char *cString;
     while(1){
-/*
-    	//#define SEC_TO_LOOP(x)        ((80000000/5)*x)
-    	for (delay_cntr = 0; delay_cntr < 5; delay_cntr++){
-    		MAP_UtilsDelay(40000000);//2.5 sec delay
-    	}
-*/
-    	//GPIO_IF_GetPortNPin(SH_GPIO_9,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
-    	//GPIO_IF_Set(SH_GPIO_9,uiGPIOPort,pucGPIOPin,0);//Turn OFF red LED 08/18/2017
-    	//GPIO_IF_GetPortNPin(10,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
-    	//GPIO_IF_Set(10,uiGPIOPort,pucGPIOPin,0);//Turn OFF orange LED 08/18/2017
-    	//GPIO_IF_GetPortNPin(11,&uiGPIOPort,&pucGPIOPin);	// Computes port and pin number from the GPIO number
-    	//GPIO_IF_Set(11,uiGPIOPort,pucGPIOPin,0);//Turn OFF green LED 08/18/2017
-    	//MAP_GPIOPinWrite(GPIOA3_BASE,0x10,0x10);
-    	GPIO_IF_LedOff(MCU_RED_LED_GPIO);
-    	//GPIO_IF_LedOff(MCU_ORANGE_LED_GPIO); //Set as I2C
-    	//GPIO_IF_LedOff(MCU_GREEN_LED_GPIO); //Set as I2C
-    	//MAP_GPIOPinWrite(GPIOA3_BASE,0x10,0x10);
-
-    	//#########################################################################################
     	//Take readings from sensors
     	AccSample_(); // Just do a single reading for now. TODO: Make Async.
     	SetAccAvg_(); // g_accXAvg, g_accYAvg, g_accZAvg, g_accTotalAvg
@@ -2192,9 +2173,6 @@ int main()
     	//Add sample number
     	smpl_nbbr ++;
 
-    	//itoa(smpl_nbbr, cString);//itoa(short cNum, char *cString);
-    	//#########################################################################################
-
     	//"acc=26 & accX=13 & accY=-1 & accZ=67 & sensortemp=23.85"//55 characters
     	cx = snprintf(buf, 119, "acc=%.0f & accX=%.0f & accY=%.0f & accZ=%.0f & sensortemp=%.2f & SN=%.0f",
     	    	 g_accTotalAvg,
@@ -2203,14 +2181,6 @@ int main()
     	    	 g_accZAvg,
     	    	 sensorTemp,
 				 smpl_nbbr);//cx is indice of the last buf[cx]. buff has all the data to be transferred
-    	/*
-    	 * Send:
-    	 * acc=XX
-    	 * accX=XX
-    	 * accY=XX
-    	 * accZ=XX
-    	 * sensortemp=XX.XX
-    	 */
     	if (cx>=0 && cx<119)	{// check returned value, the last array indice
 
     		if (Lght == 0){
@@ -2237,30 +2207,6 @@ int main()
     	{
     		MAP_PRCMMCUReset(1);
     	}
-//********************************************************** If Got Disconnected - Reconnect ***********************************
-/*
-    	if(lRetVal < 0){//If got disconnected
-
-    		UART_PRINT("HTTP Post data to data.html page failed.\n\r");
-    		UART_PRINT("Reconnecting...\n\r");
-
-    	    InitializeAppVariables();
-
-    	    lRetVal = ConnectToAP();
-    	    if(lRetVal < 0)
-    	    {
-    	    	LOOP_FOREVER();
-    	    }
-
-    	    lRetVal = ConnectToHTTPServer(&httpClient);
-    	    if(lRetVal < 0)
-    	    {
-    	        LOOP_FOREVER();
-    	    }
-
-    	}
-*/
-//***************************************************************************************************************************
     	lRetVal = HTTPGetPageMethod(&httpClient);//Read data from the action_page.php
 
     	if(lRetVal < 0)

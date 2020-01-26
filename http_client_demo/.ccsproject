@@ -11,5 +11,5 @@
 	<createSlaveProjects value=""/>
 	<templateProperties value="id=com.ti.common.project.core.emptyProjectTemplate,"/>
 	<isTargetManual value="true"/>
-	<origin value="E:/Projects/CC3200 Development/http_client_demo"/>
+	<origin value="C:/Users/chakr/Downloads/http_client_CC3200-master/http_client_demo_V01"/>
 </projectOptions>
