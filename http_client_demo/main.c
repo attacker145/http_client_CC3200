@@ -1,48 +1,6 @@
-//*****************************************************************************
-// Copyright (C) 2014 Texas Instruments Incorporated
-//
-// All rights reserved. Property of Texas Instruments Incorporated.
-// Restricted rights to use, duplicate or disclose this code are
-// granted through contract.
-// The program may not be used without the written permission of
-// Texas Instruments Incorporated or against the terms and conditions
-// stipulated in the agreement under which this program has been supplied,
-// and under no circumstances can it be used with non-TI connectivity device.
-//
-//*****************************************************************************
 
-
-//*****************************************************************************
-//
-// Application Name     - HTTP Client Demo
-// Application Overview - This sample application demonstrates how to use
-//                          HTTP Client (In Minimum mode) API for HTTP based
-//                          application development.
-//                          This application explain user to how to:
-//                          1. Connect to an access point
-//                          2. Connect to a HTTP Server with and without proxy
-//                          3. Do POST, GET, PUT and DELETE
-//                          4. Parse JSON data using “Jasmine JSON Parser
-// Note: To use HTTP Client in minimum mode, user need to compile library (webclient)
-// 			with HTTPCli_LIBTYPE_MIN option.
-//
-// 			HTTP Client (minimal) library supports synchronous mode, redirection
-// 			handling, chunked transfer encoding support, proxy support and TLS
-// 			support (for SimpleLink Only. TLS on other platforms are disabled)
-//
-// 			HTTP Client (Full) library supports all the features of the minimal
-// 			library + asynchronous mode and content handling support +
-// 			TLS support (all platforms). To use HTTP Client in full mode user need
-//			to compile library (webclient) with HTTPCli_LIBTYPE_MIN option. For full
-//			mode RTOS is needed.
-//
 // Application Details  -
-// http://processors.wiki.ti.com/index.php/
-// or
-// docs\examples\
-//
-//*****************************************************************************
-
+// http://cnktechlabs.com/CC3200/http-client.html
 
 #include <string.h>
 
